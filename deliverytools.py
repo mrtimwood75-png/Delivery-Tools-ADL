@@ -5,7 +5,7 @@ from page_irise_delivery_sheet_creator import show_irise_delivery_sheet_creator_
 from page_customer_notification import show_customer_notification_page
 
 st.set_page_config(
-    page_title="Delivery Tools",
+    page_title="Delivery Tools - ADL",
     layout="wide"
 )
 
