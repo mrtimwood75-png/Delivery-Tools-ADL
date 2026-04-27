@@ -149,7 +149,7 @@ if st.session_state.page == "home":
         st.markdown(
             """
             <div class="tool-card">
-                <div class="tool-title">Customer Notification</div>
+                <div class="tool-title">Customer Notification - BCA</div>
                 <div class="tool-text">
                     Load Tour Totals, prepare payment data, create Stripe links, and send SMS messages.
                 </div>
