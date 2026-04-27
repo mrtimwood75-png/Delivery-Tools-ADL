@@ -1,0 +1,22 @@
+{
+  "Not Ready For Delivery - Payment Request": {
+    "text": "BOCONCEPT WAREHOUSE - Hi {customer_name}, we understand that you are not yet ready for your delivery. We are happy to hold your furniture until you are ready, and ask that you make the outstanding payment of {balance_payable} for order {order_number}. Please click the link to pay securely: {stripe_checkout_url}",
+    "audience": "Balance only"
+  },
+  "Ready for Delivery - Payment": {
+    "text": "Hi {customer_name}, just a reminder that payment for order {order_number} of {balance_payable} is outstanding. Payment link: {stripe_checkout_url}",
+    "audience": "Balance only"
+  },
+  "Short version": {
+    "text": "Hi {customer_name}, please pay {balance_payable} for order {order_number}: {stripe_checkout_url}",
+    "audience": "Balance only"
+  },
+  "Delivery notice": {
+    "text": "BOCONCEPT WAREHOUSE: Hi {customer_name}, your order {order_number} is due to arrive in our Brisbane warehouse within the next few days. For priority delivery booking, please reply 'ready for delivery'. Order: {order_number}",
+    "audience": "Zero balance only"
+  },
+  "General notice": {
+    "text": "Hi {customer_name}, this is an update regarding order {order_number}.",
+    "audience": "Both"
+  }
+}
