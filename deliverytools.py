@@ -117,7 +117,7 @@ if st.session_state.page == "home":
         st.markdown(
             """
             <div class="home-hero">
-                <div class="home-title">Delivery Tools</div>
+                <div class="home-title">Delivery Tools - ADL</div>
                 <div class="home-sub">Select a tool below</div>
             </div>
             """,
