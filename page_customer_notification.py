@@ -1,3 +1,4 @@
+import base64
 import io
 import json
 from pathlib import Path
@@ -17,7 +18,6 @@ TEMPLATE_FILE = Path("notification-templates.json")
 # -----------------------------
 def show_payment_redirect():
     payment = st.query_params.get("payment")
-    session_id = st.query_params.get("session_id")
 
     if not payment:
         return False
@@ -30,130 +30,120 @@ def show_payment_redirect():
     ]
     logo_path = next((c for c in logo_candidates if c.exists()), None)
 
+    logo_html = ""
+    if logo_path:
+        try:
+            mime = "image/png" if logo_path.suffix.lower() == ".png" else "image/jpeg"
+            logo_b64 = base64.b64encode(logo_path.read_bytes()).decode("utf-8")
+            logo_html = f'<img class="redirect-logo" src="data:{mime};base64,{logo_b64}" alt="BoConcept logo">'
+        except Exception:
+            logo_html = '<div class="redirect-logo-text">BoConcept</div>'
+    else:
+        logo_html = '<div class="redirect-logo-text">BoConcept</div>'
+
+    if payment == "success":
+        icon = "✓"
+        title = "Payment received"
+        message = "Thank you. Your payment has been processed successfully."
+    elif payment in ["cancel", "cancelled", "canceled"]:
+        icon = "×"
+        title = "Payment cancelled"
+        message = "No payment has been processed."
+    else:
+        icon = ""
+        title = "Payment status unavailable"
+        message = "We could not determine the payment status from this link."
+
     st.markdown(
-        """
+        f"""
         <style>
-        #MainMenu {visibility:hidden;}
-        footer {visibility:hidden;}
-        header {visibility:hidden;}
+        #MainMenu {{ visibility: hidden; }}
+        footer {{ visibility: hidden; }}
+        header {{ visibility: hidden; }}
 
-        .stApp {
-            background-color: #ffffff;
-        }
+        .stApp {{
+            background: #ffffff;
+            color: #111111;
+        }}
 
-        .block-container {
-            max-width: 760px;
-            padding-top: 60px;
-            padding-bottom: 60px;
-        }
+        .block-container {{
+            max-width: 720px;
+            padding-top: 72px;
+            padding-bottom: 72px;
+        }}
 
-        .redirect-shell {
+        .redirect-page {{
             width: 100%;
+            max-width: 560px;
             margin: 0 auto;
             text-align: center;
-            color: #111111;
-        }
+        }}
 
-        .redirect-logo {
-            margin-bottom: 28px;
-        }
+        .redirect-logo {{
+            display: block;
+            width: 180px;
+            height: auto;
+            margin: 0 auto 34px auto;
+        }}
 
-        .redirect-card {
-            border: 1px solid #111111;
-            border-radius: 0;
-            background: #ffffff;
-            padding: 46px 42px;
-            box-shadow: none;
-        }
+        .redirect-logo-text {{
+            font-size: 26px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            margin-bottom: 34px;
+        }}
 
-        .redirect-icon {
-            width: 64px;
-            height: 64px;
-            line-height: 60px;
+        .redirect-icon {{
+            width: 58px;
+            height: 58px;
             border: 2px solid #111111;
             border-radius: 50%;
-            margin: 0 auto 24px auto;
-            font-size: 36px;
-            font-weight: 600;
+            margin: 0 auto 26px auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 34px;
+            line-height: 1;
             color: #111111;
-        }
+        }}
 
-        .redirect-title {
-            font-size: 2rem;
+        .redirect-title {{
+            font-size: 32px;
             line-height: 1.15;
             font-weight: 700;
-            margin: 0 0 14px 0;
+            margin: 0 0 16px 0;
             color: #111111;
-        }
+        }}
 
-        .redirect-text {
-            font-size: 1.05rem;
-            line-height: 1.5;
+        .redirect-message {{
+            font-size: 17px;
+            line-height: 1.55;
             margin: 0 auto;
-            max-width: 520px;
-            color: #333333;
-        }
+            max-width: 460px;
+            color: #222222;
+        }}
 
-        .redirect-reference {
-            margin-top: 28px;
-            padding-top: 18px;
-            border-top: 1px solid #e4e4e4;
-            font-size: 0.84rem;
-            color: #666666;
-            word-break: break-all;
-        }
-
-        .redirect-footer {
-            margin-top: 24px;
-            font-size: 0.9rem;
-            color: #666666;
-        }
+        .redirect-footer {{
+            margin-top: 44px;
+            padding-top: 22px;
+            border-top: 1px solid #dddddd;
+            font-size: 14px;
+            color: #555555;
+        }}
         </style>
+
+        <div class="redirect-page">
+            {logo_html}
+            <div class="redirect-icon">{icon}</div>
+            <div class="redirect-title">{title}</div>
+            <div class="redirect-message">{message}</div>
+            <div class="redirect-footer">BoConcept</div>
+        </div>
         """,
         unsafe_allow_html=True,
     )
 
-    st.markdown('<div class="redirect-shell">', unsafe_allow_html=True)
-
-    if logo_path:
-        st.image(str(logo_path), width=180)
-
-    st.markdown('<div class="redirect-card">', unsafe_allow_html=True)
-
-    if payment == "success":
-        st.markdown('<div class="redirect-icon">&#10003;</div>', unsafe_allow_html=True)
-        st.markdown('<div class="redirect-title">Payment received</div>', unsafe_allow_html=True)
-        st.markdown(
-            '<div class="redirect-text">Thank you. Your payment has been processed successfully.</div>',
-            unsafe_allow_html=True,
-        )
-        if session_id:
-            st.markdown(
-                f'<div class="redirect-reference">Reference: {session_id}</div>',
-                unsafe_allow_html=True,
-            )
-
-    elif payment in ["cancel", "cancelled", "canceled"]:
-        st.markdown('<div class="redirect-icon">&times;</div>', unsafe_allow_html=True)
-        st.markdown('<div class="redirect-title">Payment cancelled</div>', unsafe_allow_html=True)
-        st.markdown(
-            '<div class="redirect-text">No payment has been processed. You may close this window.</div>',
-            unsafe_allow_html=True,
-        )
-
-    else:
-        st.markdown('<div class="redirect-title">Payment status unavailable</div>', unsafe_allow_html=True)
-        st.markdown(
-            '<div class="redirect-text">We could not determine the payment status from this link.</div>',
-            unsafe_allow_html=True,
-        )
-
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.markdown('<div class="redirect-footer">BoConcept</div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
-
     return True
-
 
 # -----------------------------
 # Helpers

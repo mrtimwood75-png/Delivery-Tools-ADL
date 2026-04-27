@@ -3,141 +3,9 @@ from pathlib import Path
 
 from page_customer_notification import show_customer_notification_page
 
-
-# -----------------------------
-# Global payment redirect page
-# -----------------------------
-def show_payment_redirect_global():
-    payment = st.query_params.get("payment")
-
-    if not payment:
-        return False
-
-    logo_candidates = [
-        Path("files/BCLOGO.jpg"),
-        Path("files/BCLOGO.png"),
-        Path("Files/BCLOGO.jpg"),
-        Path("Files/BCLOGO.png"),
-    ]
-
-    logo_path = None
-    for candidate in logo_candidates:
-        if candidate.exists():
-            logo_path = candidate
-            break
-
-    st.set_page_config(
-        page_title="Payment Status",
-        layout="centered",
-    )
-
-    st.markdown(
-        """
-        <style>
-        #MainMenu {visibility: hidden;}
-        header {visibility: hidden;}
-        footer {visibility: hidden;}
-
-        .stApp {
-            background-color: #ffffff;
-        }
-
-        .block-container {
-            padding-top: 0rem !important;
-            padding-bottom: 0rem !important;
-            max-width: 100% !important;
-        }
-
-        .redirect-wrap {
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 32px;
-            box-sizing: border-box;
-        }
-
-        .redirect-card {
-            width: 100%;
-            max-width: 440px;
-            text-align: center;
-            background: #ffffff;
-            box-sizing: border-box;
-        }
-
-        .redirect-title {
-            font-size: 30px;
-            font-weight: 700;
-            color: #111111;
-            margin-top: 34px;
-            margin-bottom: 12px;
-        }
-
-        .redirect-text {
-            font-size: 17px;
-            color: #333333;
-            line-height: 1.45;
-            margin-bottom: 28px;
-        }
-
-        .redirect-close {
-            font-size: 15px;
-            color: #666666;
-            border-top: 1px solid #dddddd;
-            padding-top: 22px;
-            margin-top: 26px;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.markdown('<div class="redirect-wrap"><div class="redirect-card">', unsafe_allow_html=True)
-
-    if logo_path:
-        st.image(str(logo_path), width=180)
-
-    if payment == "success":
-        st.markdown('<div class="redirect-title">Payment received</div>', unsafe_allow_html=True)
-        st.markdown(
-            '<div class="redirect-text">Thank you. Your payment has been processed successfully.</div>',
-            unsafe_allow_html=True,
-        )
-
-    elif payment == "cancelled":
-        st.markdown('<div class="redirect-title">Payment cancelled</div>', unsafe_allow_html=True)
-        st.markdown(
-            '<div class="redirect-text">No payment was processed.</div>',
-            unsafe_allow_html=True,
-        )
-
-    else:
-        st.markdown('<div class="redirect-title">Payment status unavailable</div>', unsafe_allow_html=True)
-        st.markdown(
-            '<div class="redirect-text">We could not confirm the payment status from this link.</div>',
-            unsafe_allow_html=True,
-        )
-
-    st.markdown(
-        '<div class="redirect-close">You may now close this page.</div>',
-        unsafe_allow_html=True,
-    )
-
-    st.markdown('</div></div>', unsafe_allow_html=True)
-
-    return True
-
-
-if show_payment_redirect_global():
-    st.stop()
-
-
-# -----------------------------
-# Staff app
-# -----------------------------
 st.set_page_config(
     page_title="Delivery Tools - ADL",
-    layout="wide",
+    layout="wide"
 )
 
 if "page" not in st.session_state:
@@ -265,7 +133,6 @@ if st.session_state.page == "home":
             """,
             unsafe_allow_html=True,
         )
-
         st.button(
             "Open Customer Notification",
             use_container_width=True,
