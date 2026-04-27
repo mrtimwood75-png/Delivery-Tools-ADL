@@ -1,7 +1,6 @@
 import streamlit as st
 from pathlib import Path
 
-from page_irise_delivery_sheet_creator import show_irise_delivery_sheet_creator_page
 from page_customer_notification import show_customer_notification_page
 
 st.set_page_config(
@@ -15,10 +14,6 @@ if "page" not in st.session_state:
 
 def go_home():
     st.session_state.page = "home"
-
-
-def go_irise():
-    st.session_state.page = "irise"
 
 
 def go_customer_notification():
@@ -124,28 +119,9 @@ if st.session_state.page == "home":
             unsafe_allow_html=True,
         )
 
-    col1, col2 = st.columns(2, gap="large")
+    col = st.columns(1)[0]
 
-    with col1:
-        st.markdown(
-            """
-            <div class="tool-card">
-                <div class="tool-title">iRise Delivery Sheet Creator</div>
-                <div class="tool-text">
-                    Convert Axapta Packinglist - Order ASCII reports into the delivery import workbook.
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        st.button(
-            "Open iRise Delivery Sheet Creator",
-            use_container_width=True,
-            on_click=go_irise,
-            key="home_irise_button",
-        )
-
-    with col2:
+    with col:
         st.markdown(
             """
             <div class="tool-card">
@@ -163,9 +139,6 @@ if st.session_state.page == "home":
             on_click=go_customer_notification,
             key="home_customer_notification_button",
         )
-
-elif st.session_state.page == "irise":
-    show_irise_delivery_sheet_creator_page()
 
 elif st.session_state.page == "customer_notification":
     show_customer_notification_page()
