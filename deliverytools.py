@@ -5,6 +5,15 @@ from page_customer_notification import show_customer_notification_page
 
 
 # -----------------------------
+# Page config MUST be first Streamlit command
+# -----------------------------
+st.set_page_config(
+    page_title="Delivery Tools - ADL",
+    layout="wide",
+)
+
+
+# -----------------------------
 # Global payment redirect page
 # -----------------------------
 def show_payment_redirect_global():
@@ -25,11 +34,6 @@ def show_payment_redirect_global():
         if candidate.exists():
             logo_path = candidate
             break
-
-    st.set_page_config(
-        page_title="Payment Status",
-        layout="centered",
-    )
 
     st.markdown(
         """
@@ -63,13 +67,19 @@ def show_payment_redirect_global():
             text-align: center;
             background: #ffffff;
             box-sizing: border-box;
+            margin: 0 auto;
+        }
+
+        .redirect-logo {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 34px;
         }
 
         .redirect-title {
             font-size: 30px;
             font-weight: 700;
             color: #111111;
-            margin-top: 34px;
             margin-bottom: 12px;
         }
 
@@ -92,34 +102,32 @@ def show_payment_redirect_global():
         unsafe_allow_html=True,
     )
 
+    status_html = ""
+    if payment == "success":
+        status_html = """
+            <div class="redirect-title">Payment received</div>
+            <div class="redirect-text">Thank you. Your payment has been processed successfully.</div>
+        """
+    elif payment == "cancelled":
+        status_html = """
+            <div class="redirect-title">Payment cancelled</div>
+            <div class="redirect-text">No payment was processed.</div>
+        """
+    else:
+        status_html = """
+            <div class="redirect-title">Payment status unavailable</div>
+            <div class="redirect-text">We could not confirm the payment status from this link.</div>
+        """
+
     st.markdown('<div class="redirect-wrap"><div class="redirect-card">', unsafe_allow_html=True)
 
     if logo_path:
+        st.markdown('<div class="redirect-logo">', unsafe_allow_html=True)
         st.image(str(logo_path), width=180)
-
-    if payment == "success":
-        st.markdown('<div class="redirect-title">Payment received</div>', unsafe_allow_html=True)
-        st.markdown(
-            '<div class="redirect-text">Thank you. Your payment has been processed successfully.</div>',
-            unsafe_allow_html=True,
-        )
-
-    elif payment == "cancelled":
-        st.markdown('<div class="redirect-title">Payment cancelled</div>', unsafe_allow_html=True)
-        st.markdown(
-            '<div class="redirect-text">No payment was processed.</div>',
-            unsafe_allow_html=True,
-        )
-
-    else:
-        st.markdown('<div class="redirect-title">Payment status unavailable</div>', unsafe_allow_html=True)
-        st.markdown(
-            '<div class="redirect-text">We could not confirm the payment status from this link.</div>',
-            unsafe_allow_html=True,
-        )
+        st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown(
-        '<div class="redirect-close">You may now close this page.</div>',
+        status_html + '<div class="redirect-close">You may now close this page.</div>',
         unsafe_allow_html=True,
     )
 
@@ -135,11 +143,6 @@ if show_payment_redirect_global():
 # -----------------------------
 # Staff app
 # -----------------------------
-st.set_page_config(
-    page_title="Delivery Tools - ADL",
-    layout="wide",
-)
-
 if "page" not in st.session_state:
     st.session_state.page = "home"
 
