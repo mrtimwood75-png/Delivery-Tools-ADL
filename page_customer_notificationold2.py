@@ -1,3 +1,4 @@
+import base64
 import io
 import json
 from pathlib import Path
@@ -11,6 +12,138 @@ import stripe
 MODULE_VERSION = "Customer Notification v1.2.0"
 TEMPLATE_FILE = Path("notification-templates.json")
 
+
+# -----------------------------
+# Stripe payment redirect screens
+# -----------------------------
+def show_payment_redirect():
+    payment = st.query_params.get("payment")
+
+    if not payment:
+        return False
+
+    logo_candidates = [
+        Path("files/BCLOGO.jpg"),
+        Path("files/BCLOGO.png"),
+        Path("Files/BCLOGO.jpg"),
+        Path("Files/BCLOGO.png"),
+    ]
+    logo_path = next((c for c in logo_candidates if c.exists()), None)
+
+    logo_html = ""
+    if logo_path:
+        try:
+            mime = "image/png" if logo_path.suffix.lower() == ".png" else "image/jpeg"
+            logo_b64 = base64.b64encode(logo_path.read_bytes()).decode("utf-8")
+            logo_html = f'<img class="redirect-logo" src="data:{mime};base64,{logo_b64}" alt="BoConcept logo">'
+        except Exception:
+            logo_html = '<div class="redirect-logo-text">BoConcept</div>'
+    else:
+        logo_html = '<div class="redirect-logo-text">BoConcept</div>'
+
+    if payment == "success":
+        icon = "✓"
+        title = "Payment received"
+        message = "Thank you. Your payment has been processed successfully."
+    elif payment in ["cancel", "cancelled", "canceled"]:
+        icon = "×"
+        title = "Payment cancelled"
+        message = "No payment has been processed."
+    else:
+        icon = ""
+        title = "Payment status unavailable"
+        message = "We could not determine the payment status from this link."
+
+    st.markdown(
+        f"""
+        <style>
+        #MainMenu {{ visibility: hidden; }}
+        footer {{ visibility: hidden; }}
+        header {{ visibility: hidden; }}
+
+        .stApp {{
+            background: #ffffff;
+            color: #111111;
+        }}
+
+        .block-container {{
+            max-width: 720px;
+            padding-top: 72px;
+            padding-bottom: 72px;
+        }}
+
+        .redirect-page {{
+            width: 100%;
+            max-width: 560px;
+            margin: 0 auto;
+            text-align: center;
+        }}
+
+        .redirect-logo {{
+            display: block;
+            width: 180px;
+            height: auto;
+            margin: 0 auto 34px auto;
+        }}
+
+        .redirect-logo-text {{
+            font-size: 26px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            margin-bottom: 34px;
+        }}
+
+        .redirect-icon {{
+            width: 58px;
+            height: 58px;
+            border: 2px solid #111111;
+            border-radius: 50%;
+            margin: 0 auto 26px auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 34px;
+            line-height: 1;
+            color: #111111;
+        }}
+
+        .redirect-title {{
+            font-size: 32px;
+            line-height: 1.15;
+            font-weight: 700;
+            margin: 0 0 16px 0;
+            color: #111111;
+        }}
+
+        .redirect-message {{
+            font-size: 17px;
+            line-height: 1.55;
+            margin: 0 auto;
+            max-width: 460px;
+            color: #222222;
+        }}
+
+        .redirect-footer {{
+            margin-top: 44px;
+            padding-top: 22px;
+            border-top: 1px solid #dddddd;
+            font-size: 14px;
+            color: #555555;
+        }}
+        </style>
+
+        <div class="redirect-page">
+            {logo_html}
+            <div class="redirect-icon">{icon}</div>
+            <div class="redirect-title">{title}</div>
+            <div class="redirect-message">{message}</div>
+            <div class="redirect-footer">BoConcept</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    return True
 
 # -----------------------------
 # Helpers
@@ -307,11 +440,13 @@ def to_excel_bytes(df):
 # -----------------------------
 def create_stripe_checkout_session(row):
     secret_key = get_secret("STRIPE_SECRET_KEY")
+    success_url = get_secret("STRIPE_SUCCESS_URL")
+    cancel_url = get_secret("STRIPE_CANCEL_URL")
 
     if not secret_key:
         raise ValueError("Missing STRIPE_SECRET_KEY in Streamlit secrets.")
-
-    stripe_return_url = "https://example.com"
+    if not success_url or not cancel_url:
+        raise ValueError("Missing STRIPE_SUCCESS_URL or STRIPE_CANCEL_URL in Streamlit secrets.")
 
     amount = float(row["Balance payable"])
     if amount <= 0:
@@ -335,8 +470,8 @@ def create_stripe_checkout_session(row):
                 "quantity": 1,
             }
         ],
-        success_url=stripe_return_url,
-        cancel_url=stripe_return_url,
+        success_url=success_url,
+        cancel_url=cancel_url,
         metadata={
             "customer_name": str(row["Customer Name"]),
             "mobile": str(row["Mobile"]),
@@ -501,6 +636,9 @@ def sync_notification_editor():
 # UI
 # -----------------------------
 def show_customer_notification_page():
+    if show_payment_redirect():
+        st.stop()
+
     if st.button("← Main Menu", key="back_from_customer_notification"):
         st.session_state.page = "home"
         st.rerun()
@@ -961,6 +1099,8 @@ MESSAGEMEDIA_SENDER_ID = ""
 MESSAGEMEDIA_BASE_URL = "https://api.messagemedia.com"
 
 STRIPE_SECRET_KEY = "your_stripe_secret_key"
+STRIPE_SUCCESS_URL = "https://your-app-url.streamlit.app/?payment=success"
+STRIPE_CANCEL_URL = "https://your-app-url.streamlit.app/?payment=cancelled"
 """
             st.code(example_secrets, language="toml")
             st.success("Paste this into Streamlit secrets.")
