@@ -19,9 +19,32 @@ def parse_amount(value):
     value = str(value).strip()
     if not value:
         return 0.0
-    value = value.replace(".", "").replace(",", ".")
+
+    cleaned = "".join(ch for ch in value if ch.isdigit() or ch in [".", ",", "-"])
+    if not cleaned or cleaned in ["-", ".", ","]:
+        return 0.0
+
+    last_dot = cleaned.rfind(".")
+    last_comma = cleaned.rfind(",")
+
+    if last_dot != -1 and last_comma != -1:
+        if last_dot > last_comma:
+            cleaned = cleaned.replace(",", "")
+        else:
+            cleaned = cleaned.replace(".", "").replace(",", ".")
+    elif last_comma != -1:
+        if len(cleaned) - last_comma - 1 == 2:
+            cleaned = cleaned.replace(",", ".")
+        else:
+            cleaned = cleaned.replace(",", "")
+    elif last_dot != -1 and cleaned.count(".") > 1:
+        if len(cleaned) - last_dot - 1 == 2:
+            cleaned = cleaned[:last_dot].replace(".", "") + cleaned[last_dot:]
+        else:
+            cleaned = cleaned.replace(".", "")
+
     try:
-        return float(value)
+        return float(cleaned)
     except Exception:
         return 0.0
 
