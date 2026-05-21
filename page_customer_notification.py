@@ -8,14 +8,14 @@ import streamlit as st
 import stripe
 
 
-MODULE_VERSION = "Customer Notification v1.2.0"
+MODULE_VERSION = "Customer Notification v1.2.1"
 TEMPLATE_FILE = Path("notification-templates.json")
 
 
 # -----------------------------
 # Helpers
 # -----------------------------
-def parse_amount(value):
+def parse_amount(value, price_format="Auto detect"):
     value = str(value).strip()
     if not value:
         return 0.0
@@ -24,24 +24,29 @@ def parse_amount(value):
     if not cleaned or cleaned in ["-", ".", ","]:
         return 0.0
 
-    last_dot = cleaned.rfind(".")
-    last_comma = cleaned.rfind(",")
+    if price_format == "$2,500.65":
+        cleaned = cleaned.replace(",", "")
+    elif price_format == "$2.500,65":
+        cleaned = cleaned.replace(".", "").replace(",", ".")
+    else:
+        last_dot = cleaned.rfind(".")
+        last_comma = cleaned.rfind(",")
 
-    if last_dot != -1 and last_comma != -1:
-        if last_dot > last_comma:
-            cleaned = cleaned.replace(",", "")
-        else:
-            cleaned = cleaned.replace(".", "").replace(",", ".")
-    elif last_comma != -1:
-        if len(cleaned) - last_comma - 1 == 2:
-            cleaned = cleaned.replace(",", ".")
-        else:
-            cleaned = cleaned.replace(",", "")
-    elif last_dot != -1 and cleaned.count(".") > 1:
-        if len(cleaned) - last_dot - 1 == 2:
-            cleaned = cleaned[:last_dot].replace(".", "") + cleaned[last_dot:]
-        else:
-            cleaned = cleaned.replace(".", "")
+        if last_dot != -1 and last_comma != -1:
+            if last_dot > last_comma:
+                cleaned = cleaned.replace(",", "")
+            else:
+                cleaned = cleaned.replace(".", "").replace(",", ".")
+        elif last_comma != -1:
+            if len(cleaned) - last_comma - 1 == 2:
+                cleaned = cleaned.replace(",", ".")
+            else:
+                cleaned = cleaned.replace(",", "")
+        elif last_dot != -1 and cleaned.count(".") > 1:
+            if len(cleaned) - last_dot - 1 == 2:
+                cleaned = cleaned[:last_dot].replace(".", "") + cleaned[last_dot:]
+            else:
+                cleaned = cleaned.replace(".", "")
 
     try:
         return float(cleaned)
@@ -211,7 +216,7 @@ def save_current_template():
 # -----------------------------
 # Parsing / export
 # -----------------------------
-def parse_notification_report(file_bytes):
+def parse_notification_report(file_bytes, price_format="Auto detect"):
     text = file_bytes.decode("utf-8", errors="ignore")
     lines = [line.rstrip("\r") for line in text.splitlines() if line.strip()]
 
@@ -235,7 +240,7 @@ def parse_notification_report(file_bytes):
         for i, col in enumerate(header):
             row_dict[col.strip()] = row[i].strip() if i < len(row) else ""
 
-        balance = parse_amount(row_dict.get("Balance due", ""))
+        balance = parse_amount(row_dict.get("Balance due", ""), price_format)
 
         records.append(
             {
@@ -681,6 +686,8 @@ def show_customer_notification_page():
         st.session_state.cn_template_text = ""
     if "cn_template_audience" not in st.session_state:
         st.session_state.cn_template_audience = "Both"
+    if "cn_price_format" not in st.session_state:
+        st.session_state.cn_price_format = "Auto detect"
 
     if st.session_state.notification_template_name not in st.session_state.notification_templates:
         st.session_state.notification_template_name = list(st.session_state.notification_templates.keys())[0]
@@ -741,6 +748,14 @@ def show_customer_notification_page():
             value=st.session_state.notification_output_name,
             key="cn_output_name",
         )
+        price_format = st.selectbox(
+            "Source price format",
+            ["Auto detect", "$2,500.65", "$2.500,65"],
+            index=["Auto detect", "$2,500.65", "$2.500,65"].index(st.session_state.cn_price_format),
+            key="cn_price_format_select",
+            help="Select the exact price format used in the imported text report.",
+        )
+        st.session_state.cn_price_format = price_format
         load_preview = st.button("Load Preview", key="cn_load_preview")
 
     st.markdown("</div>", unsafe_allow_html=True)
@@ -750,7 +765,7 @@ def show_customer_notification_page():
             st.error("Upload a Tour Totals report.")
         else:
             try:
-                df = parse_notification_report(uploaded_file.getvalue())
+                df = parse_notification_report(uploaded_file.getvalue(), st.session_state.cn_price_format)
                 df = ensure_action_columns(df)
                 df["Mobile"] = df["Mobile"].apply(normalize_mobile_au)
                 df["Balance payable"] = pd.to_numeric(df["Balance payable"], errors="coerce").fillna(0.0)
@@ -761,7 +776,7 @@ def show_customer_notification_page():
                 st.session_state.notification_excel_bytes = to_excel_bytes(df)
                 st.session_state.notification_last_result = None
 
-                st.success(f"Rows detected: {len(df)}")
+                st.success(f"Rows detected: {len(df)} | Price format: {st.session_state.cn_price_format}")
                 st.rerun()
             except Exception as e:
                 st.error(f"Error: {e}")
