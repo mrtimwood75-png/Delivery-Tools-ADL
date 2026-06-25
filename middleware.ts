@@ -81,4 +81,4 @@ export default auth((request) => {
 })
 
 // Run on all routes except Next internals and static assets.
-export const config = { matcher: ['/((?!_next/static|_next/image|favicon.ico|BoConcept-Logo.svg).*)'] }
+export const config = { matcher: ['/((?!_next/static|_next/image|favicon.ico|BoConcept-Logo.svg|transforma-logo.svg).*)'] }

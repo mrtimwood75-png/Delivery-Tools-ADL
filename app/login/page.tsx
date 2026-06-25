@@ -12,7 +12,13 @@ const MICROSOFT = STORE === 'bca'
     ? { id: 'entra-transforma', label: 'Sign in with Microsoft (Transforma)' }
     : null
 
-const BRAND = STORE === 'transforma' ? 'Transforma' : 'BoConcept Adelaide'
+// The dashboard is shared, so it shows both brands; each payment app shows its own.
+const BRAND = STORE === 'transforma' ? 'Transforma' : STORE === 'bca' ? 'BoConcept Adelaide' : 'Adelaide Delivery'
+const LOGOS = STORE === 'transforma'
+  ? ['/transforma-logo.svg']
+  : STORE === 'bca'
+    ? ['/BoConcept-Logo.svg']
+    : ['/BoConcept-Logo.svg', '/transforma-logo.svg']
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -34,6 +40,10 @@ export default function LoginPage() {
     <main style={{ display: 'grid', placeItems: 'center' }}>
       <div className="card grid" style={{ width: 'min(460px, 100%)' }}>
         <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap', marginBottom: 10 }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            {LOGOS.map((src) => <img key={src} src={src} alt="" style={{ height: 26, width: 'auto' }} />)}
+          </div>
           <p className="muted" style={{ margin: 0 }}>{BRAND}</p>
           <h1 style={{ margin: '4px 0 8px' }}>Sign in</h1>
           <p className="muted" style={{ margin: 0 }}>

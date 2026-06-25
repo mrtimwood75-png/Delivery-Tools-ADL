@@ -9,6 +9,7 @@ export type Brand = 'bca' | 'transforma'
 export type BrandConfig = {
   brand: Brand
   displayName: string
+  logo: string
   emailFrom: string
   smsFrom: string
   stripeSecretKey: string
@@ -25,6 +26,7 @@ function env(...names: string[]): string {
 
 const PREFIX: Record<Brand, string> = { bca: 'BCA', transforma: 'TRANSFORMA' }
 const DEFAULT_NAME: Record<Brand, string> = { bca: 'BoConcept Adelaide', transforma: 'Transforma' }
+export const BRAND_LOGO: Record<Brand, string> = { bca: '/BoConcept-Logo.svg', transforma: '/transforma-logo.svg' }
 
 // Per-brand env (e.g. BCA_STRIPE_SECRET_KEY) with a fall back to the legacy
 // single-value names, so a single-brand payment deployment can use either.
@@ -33,6 +35,7 @@ export function brandConfig(brand: Brand): BrandConfig {
   return {
     brand,
     displayName: env(`${p}_DISPLAY_NAME`) || DEFAULT_NAME[brand],
+    logo: BRAND_LOGO[brand],
     emailFrom: env(`${p}_EMAIL_FROM`, 'EMAIL_FROM'),
     smsFrom: env(`${p}_SMS_FROM`, 'MESSAGEMEDIA_SENDER_ID'),
     stripeSecretKey: env(`${p}_STRIPE_SECRET_KEY`, 'STRIPE_SECRET_KEY'),
