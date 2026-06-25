@@ -35,6 +35,9 @@ export default function AdminTemplatesPage() {
   const [replyRules, setReplyRules] = useState<{ id: string; keyword: string; reply_template_id: string | null; set_status: string | null; set_light: string | null; is_active: boolean }[]>([])
   const [templateList, setTemplateList] = useState<{ id: string; name: string }[]>([])
   const [newRule, setNewRule] = useState({ keyword: '', reply_template_id: '', set_status: '', set_light: '' })
+  const [transformaFrom, setTransformaFrom] = useState('')
+  const [transformaSyncing, setTransformaSyncing] = useState(false)
+  const [transformaResult, setTransformaResult] = useState('')
 
   const isAdmin = myRole === 'admin'
 
@@ -270,6 +273,29 @@ export default function AdminTemplatesPage() {
     setStatus('User updated.')
   }
 
+  async function syncTransforma() {
+    setTransformaSyncing(true)
+    setTransformaResult('')
+    try {
+      const qs = transformaFrom ? `?from=${encodeURIComponent(transformaFrom)}` : ''
+      const response = await fetch(`/api/import/transforma${qs}`, { method: 'POST' })
+      if (response.status === 404) {
+        setTransformaResult('Transforma sync is not enabled on this deployment (set ENABLE_TRANSFORMA_SYNC=true).')
+        return
+      }
+      const result = await response.json()
+      if (!response.ok) {
+        setTransformaResult(result.error || 'Sync failed.')
+        return
+      }
+      setTransformaResult(`Synced ${result.orderCount ?? 0} order(s) from ${result.fromDate}: ${result.created} created, ${result.updated} updated.`)
+    } catch (error) {
+      setTransformaResult(error instanceof Error ? error.message : 'Sync failed.')
+    } finally {
+      setTransformaSyncing(false)
+    }
+  }
+
   return (
     <main>
       <div className="card grid" style={{ maxWidth: 1200, margin: '0 auto' }}>
@@ -291,6 +317,19 @@ export default function AdminTemplatesPage() {
             </select>
           </label>
           <p className="muted" style={{ margin: 0 }}>{densityOptions.find((option) => option.value === density)?.help}</p>
+        </section> : null}
+
+        {isAdmin ? <section className="card grid" style={{ boxShadow: 'none' }}>
+          <h2 style={{ margin: 0 }}>Transforma Sync</h2>
+          <p className="muted" style={{ margin: 0 }}>Pull orders from the Transforma Options API into the dashboard now. This also runs automatically every 20 minutes. Orders are matched by order number and tagged as Transforma; existing orders keep their dashboard status, dates and notes.</p>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
+            <label style={{ margin: 0 }}>From date (optional)
+              <input type="date" value={transformaFrom} onChange={(event) => setTransformaFrom(event.target.value)} />
+            </label>
+            <button type="button" onClick={syncTransforma} disabled={transformaSyncing}>{transformaSyncing ? 'Syncing…' : 'Sync Transforma now'}</button>
+          </div>
+          <p className="muted" style={{ margin: 0 }}>Leave the date blank to sync everything booked from today onward.</p>
+          {transformaResult ? <p style={{ margin: 0, fontWeight: 600 }}>{transformaResult}</p> : null}
         </section> : null}
 
         {isAdmin ? <section className="card grid" style={{ boxShadow: 'none' }}>
