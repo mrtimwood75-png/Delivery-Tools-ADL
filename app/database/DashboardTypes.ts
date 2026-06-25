@@ -35,6 +35,7 @@ export type Order = {
   order_notes?: string | null
   archived_at?: string | null
   salesperson?: string | null
+  source?: string | null
   delivery_confirmation?: string | null
   has_reply?: boolean
   imported_at?: string

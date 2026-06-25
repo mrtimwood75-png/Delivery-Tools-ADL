@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { FormEvent, useEffect, useState } from 'react'
+import BrandLogos from '@/components/BrandLogos'
 
 type Template = { id: string; name: string; template_text: string; audience: string; is_active: boolean; sort_order?: number | null; purpose?: string | null }
 
@@ -98,7 +99,7 @@ export default function TemplatesPage() {
       <div className="card grid" style={{ maxWidth: 1000, margin: '0 auto', gap: 18 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            <img src="/BoConcept-Logo.svg" alt="BoConcept" style={{ width: 150, display: 'block' }} />
+            <BrandLogos height={30} />
             <h1 style={{ margin: 0, fontSize: 22, letterSpacing: '-0.01em' }}>SMS Templates</h1>
           </div>
           <Link href="/database" style={{ textDecoration: 'none' }}><button type="button" className="btn-secondary">← Back to dashboard</button></Link>

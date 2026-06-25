@@ -4,8 +4,8 @@ import Script from 'next/script'
 import Providers from '@/components/Providers'
 
 export const metadata: Metadata = {
-  title: 'Delivery Tools Adelaide',
-  description: 'Delivery management tools for BoConcept Adelaide & Transforma'
+  title: 'Warehouse Dashboard (ADL)',
+  description: 'Warehouse delivery dashboard for BoConcept Adelaide & Transforma'
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

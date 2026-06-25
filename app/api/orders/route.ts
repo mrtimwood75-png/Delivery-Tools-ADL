@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
   const view = new URL(request.url).searchParams.get('view') === 'archived' ? 'archived' : 'active'
   let query = supabaseAdmin
     .from('delivery_orders')
-    .select('id, created_at, import_date, imported_at, order_number, customer_id, payment_status, order_status, ready_status, goods_ready_date, goods_in_date, delivery_date, stripe_link, payment_due, sms_status, date_sent, order_notes, archived_at, salesperson, delivery_confirmation')
+    .select('id, created_at, import_date, imported_at, order_number, customer_id, payment_status, order_status, ready_status, goods_ready_date, goods_in_date, delivery_date, stripe_link, payment_due, sms_status, date_sent, order_notes, archived_at, salesperson, source, delivery_confirmation')
     .order('imported_at', { ascending: false })
     .order('order_number', { ascending: true })
     .limit(500)

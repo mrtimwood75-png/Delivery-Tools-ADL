@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import BrandLogos from '@/components/BrandLogos'
 
 // Same-origin requests carry the NextAuth session cookie, which the server
 // verifies — no Authorization header needed. Kept as a no-op so existing call
@@ -161,7 +162,7 @@ export default function PaymentLinkPage() {
             <a href="/admin" style={{ position: 'absolute', top: 0, right: 0, fontSize: 13, fontWeight: 600, color: '#1a1a1a', textDecoration: 'underline' }}>Admin</a>
           )}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/BoConcept-Logo.svg" alt="BoConcept" style={{ height: 26, marginBottom: 18 }} />
+          <div style={{ marginBottom: 18 }}><BrandLogos height={26} /></div>
           <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>Send a Payment Link</h1>
           <p style={{ color: '#6b6b6b', fontSize: 14, marginTop: 8 }}>
             Create a secure card-payment link and send it to your customer. You&apos;ll get an email when it&apos;s paid.

@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { FormEvent, useEffect, useState } from 'react'
+import BrandLogos from '@/components/BrandLogos'
 
 type AppUser = { id: string; email: string; full_name: string | null; role: string; is_active: boolean; can_access_dashboard?: boolean; can_access_payments?: boolean }
 type Density = 'compact' | 'normal' | 'spacious'
@@ -301,7 +302,7 @@ export default function AdminTemplatesPage() {
       <div className="card grid" style={{ maxWidth: 1200, margin: '0 auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
           <div>
-            <img src="/BoConcept-Logo.svg" alt="BoConcept" style={{ width: 180, height: 'auto', display: 'block', marginBottom: 12 }} />
+            <div style={{ marginBottom: 12 }}><BrandLogos height={34} /></div>
             <h1 style={{ margin: '4px 0 8px' }}>Admin</h1>
             <p className="muted" style={{ margin: 0 }}>Shared admin for both apps — users &amp; per-app access, message templates (kept separate per app), statuses, salespeople and emails.</p>
           </div>
