@@ -1,8 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
+import { auth } from '@/auth'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 
-export async function GET(request: NextRequest) {
-  const email = request.nextUrl.searchParams.get('email') || ''
+// Identity for the client UI. Derived from the signed-in session — the legacy
+// ?email= query param is ignored so it can't be spoofed.
+export async function GET() {
+  const session = await auth()
+  const email = session?.user?.email?.toLowerCase() || ''
 
   if (!email) {
     return NextResponse.json({ user: null, isAdmin: false, canAccessSettings: false, canAccessDashboard: false, canAccessPayments: false })
@@ -10,8 +14,8 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await supabaseAdmin
     .from('app_users')
-    .select('email, full_name, role, is_active, can_access_dashboard, can_access_payments')
-    .eq('email', email.toLowerCase())
+    .select('email, full_name, role, is_active, store, can_access_dashboard, can_access_payments')
+    .eq('email', email)
     .eq('is_active', true)
     .maybeSingle()
 

@@ -2,13 +2,9 @@
 
 import Link from 'next/link'
 import { FormEvent, useEffect, useState } from 'react'
-import { createClient } from '@supabase/supabase-js'
 
-const client = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-)
-
+// Self-service password change for dashboard (password) users. Reads identity
+// from the session via /api/me and updates the password through a server route.
 export default function AccountPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -17,14 +13,17 @@ export default function AccountPage() {
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
-    client.auth.getUser().then(({ data }) => {
-      if (data.user?.email) {
-        setEmail(data.user.email)
-        setReady(true)
-      } else {
-        setStatus('You are not signed in. Please log in again to change your password.')
-      }
-    })
+    fetch('/api/me')
+      .then((response) => response.json())
+      .then((result) => {
+        if (result?.user?.email) {
+          setEmail(result.user.email)
+          setReady(true)
+        } else {
+          setStatus('You are not signed in. Please log in again to change your password.')
+        }
+      })
+      .catch(() => setStatus('Could not load your account.'))
   }, [])
 
   async function submit(event: FormEvent) {
@@ -32,8 +31,13 @@ export default function AccountPage() {
     if (password.length < 6) return setStatus('Password must be at least 6 characters.')
     if (password !== confirm) return setStatus('Passwords do not match.')
     setStatus('Updating password...')
-    const { error } = await client.auth.updateUser({ password })
-    if (error) return setStatus(error.message)
+    const response = await fetch('/api/account/password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password })
+    })
+    const result = await response.json().catch(() => ({}))
+    if (!response.ok) return setStatus(result.error || 'Could not update password.')
     setPassword('')
     setConfirm('')
     setStatus('Password updated. Use your new password next time you log in.')
@@ -43,7 +47,6 @@ export default function AccountPage() {
     <main style={{ display: 'grid', placeItems: 'center' }}>
       <form className="card grid" style={{ width: 'min(460px, 100%)' }} onSubmit={submit}>
         <div>
-          <p className="muted" style={{ margin: 0 }}>BoConcept</p>
           <h1 style={{ margin: '4px 0 8px' }}>Change Password</h1>
           <p className="muted" style={{ margin: 0 }}>{email ? `Signed in as ${email}` : 'Update your account password.'}</p>
         </div>

@@ -1,19 +1,19 @@
-import { NextRequest } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import type { NextRequest } from 'next/server'
+import { auth } from '@/auth'
 
-// Server-side auth guard for API routes. The browser holds a Supabase session
-// (in localStorage), so the client sends its access token as a Bearer header and
-// we validate it here. Returns the authenticated user, or null if the token is
-// missing/invalid. This makes the endpoint require a real login rather than
-// relying only on the client-side AuthGate, which does not protect the API.
-export async function getRequestUser(request: NextRequest) {
-  const header = request.headers.get('authorization') || ''
-  let token = header.startsWith('Bearer ') ? header.slice(7).trim() : ''
-  // Fall back to the session cookie so same-origin pages (e.g. the admin page)
-  // that don't set an Authorization header still authenticate.
-  if (!token) token = request.cookies.get('sb-access-token')?.value || ''
-  if (!token) return null
-  const { data, error } = await supabaseAdmin.auth.getUser(token)
-  if (error || !data.user) return null
-  return data.user
+// Server-side auth guard for API routes. Identity comes from the NextAuth
+// session (also enforced by middleware); we re-read it here so a route can use
+// the caller's email/role. The request arg is accepted for call-site
+// compatibility but unused — the session is read from cookies. Returns null
+// when there is no valid session.
+export async function getRequestUser(_request?: NextRequest) {
+  const session = await auth()
+  const email = session?.user?.email?.toLowerCase()
+  if (!email) return null
+  return {
+    id: email,
+    email,
+    isAdmin: !!session?.user?.isAdmin,
+    store: session?.user?.store ?? null
+  }
 }

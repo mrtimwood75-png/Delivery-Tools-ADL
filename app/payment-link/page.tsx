@@ -1,14 +1,12 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { supabase } from '@/lib/supabase'
 
-// Attach the logged-in user's Supabase token so the server can verify the
-// request — the payment-link API requires a real login, not just the UI gate.
+// Same-origin requests carry the NextAuth session cookie, which the server
+// verifies — no Authorization header needed. Kept as a no-op so existing call
+// sites stay unchanged.
 async function authHeader(): Promise<Record<string, string>> {
-  const { data } = await supabase.auth.getSession()
-  const token = data.session?.access_token
-  return token ? { Authorization: `Bearer ${token}` } : {}
+  return {}
 }
 
 type Salesperson = { id: string; code: string; name: string | null; email: string | null }

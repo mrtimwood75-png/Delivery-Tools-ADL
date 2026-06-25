@@ -1,77 +1,84 @@
+import NextAuth from 'next-auth'
 import { NextResponse } from 'next/server'
-import type { NextRequest } from 'next/server'
+import { authConfig } from '@/auth.config'
+import { STORE, isPaymentStore } from '@/lib/store'
 
-// Endpoints that must stay reachable without a logged-in user:
+// Edge instance built from the edge-safe config (no DB imports at module load).
+const { auth } = NextAuth(authConfig)
+
+// API endpoints reachable without a logged-in user:
+//  - NextAuth's own /api/auth/* endpoints
 //  - Stripe + MessageMedia webhooks (verified by their own signatures)
 //  - the customer-facing success page's session lookup
+//  - the Transforma sync (self-guards: Bearer CRON_SECRET or a logged-in user)
+//  - the one-time first-admin bootstrap (guarded by BOOTSTRAP_SECRET)
 const PUBLIC_API = [
   '/api/stripe-webhook',
   '/api/sms/inbound',
   '/api/payment-link/session',
-  // Transforma sync self-guards (Bearer CRON_SECRET or a logged-in user) so the
-  // Vercel cron can reach it without a session cookie.
-  '/api/import/transforma'
+  '/api/import/transforma',
+  '/api/bootstrap'
 ]
 
 function isPublicApi(pathname: string, method: string) {
+  if (pathname.startsWith('/api/auth/')) return true
   if (PUBLIC_API.some((p) => pathname === p || pathname.startsWith(p + '/'))) return true
   // The root layout reads density prefs before any login, so allow that GET.
   if (pathname === '/api/settings' && method === 'GET') return true
   return false
 }
 
-// Validate the Supabase access token against the auth server. Uses only public
-// config (URL + anon key); a valid token returns 200 from /auth/v1/user.
-async function tokenIsValid(token: string) {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  if (!url || !anon || !token) return false
-  try {
-    const res = await fetch(`${url}/auth/v1/user`, {
-      headers: { apikey: anon, Authorization: `Bearer ${token}` }
-    })
-    return res.ok
-  } catch {
-    return false
-  }
+function isPublicPage(pathname: string) {
+  return pathname === '/login' || pathname.startsWith('/pay/')
 }
 
-// Pages allowed to render on the dedicated payments host — the tool itself, the
-// shared admin page (admins only, enforced in-app), the public customer
-// success/cancel pages, and the login screen. Everything else is rewritten to
-// the tool so the delivery dashboard is never reachable there.
-function allowedOnPaymentsHost(pathname: string) {
+// On a single-brand payment deployment, expose only the payment tool, the shared
+// admin page, the public customer pages, login and the account page.
+function allowedOnPaymentStore(pathname: string) {
   return pathname === '/payment-link'
     || pathname === '/admin' || pathname.startsWith('/admin/')
     || pathname.startsWith('/pay/')
     || pathname === '/login'
+    || pathname === '/account'
 }
 
-// Single site-wide gate: (1) require a valid Supabase session for every /api/*
-// call except allowlisted webhooks, and (2) when served on the dedicated
-// payments domain, expose only the payment tool — not the dashboard.
-export async function middleware(request: NextRequest) {
+// Single site-wide gate, server-side and fail-closed: require a valid (and
+// allowlisted) session for every page and every /api/* call except the
+// allowlisted webhooks; gate /admin to admins; and on a payment deployment keep
+// the dashboard unreachable.
+export default auth((request) => {
   const { pathname } = request.nextUrl
+  const session = request.auth
+  const user = session?.user
 
   if (pathname.startsWith('/api/')) {
     if (isPublicApi(pathname, request.method)) return NextResponse.next()
-    const token = request.cookies.get('sb-access-token')?.value || ''
-    if (!(await tokenIsValid(token))) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     return NextResponse.next()
   }
 
-  const host = (request.headers.get('host') || '').split(':')[0]
-  const paymentsHost = (process.env.PAYMENTS_HOST || '').split(':')[0]
-  if (paymentsHost && host === paymentsHost && !allowedOnPaymentsHost(pathname)) {
+  if (isPublicPage(pathname)) return NextResponse.next()
+
+  if (!session) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/login'
+    return NextResponse.redirect(url)
+  }
+
+  if ((pathname === '/admin' || pathname.startsWith('/admin/')) && !user?.isAdmin) {
+    const url = request.nextUrl.clone()
+    url.pathname = isPaymentStore(STORE) ? '/payment-link' : '/database'
+    return NextResponse.redirect(url)
+  }
+
+  if (isPaymentStore(STORE) && !allowedOnPaymentStore(pathname)) {
     const url = request.nextUrl.clone()
     url.pathname = '/payment-link'
     return NextResponse.rewrite(url)
   }
 
   return NextResponse.next()
-}
+})
 
 // Run on all routes except Next internals and static assets.
 export const config = { matcher: ['/((?!_next/static|_next/image|favicon.ico|BoConcept-Logo.svg).*)'] }
