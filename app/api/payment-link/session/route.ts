@@ -1,21 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import Stripe from 'stripe'
-
-const stripeKey = process.env.STRIPE_SECRET_KEY
-if (!stripeKey) throw new Error('Missing STRIPE_SECRET_KEY')
-
-const stripe = new Stripe(stripeKey)
+import { retrieveCheckoutSession } from '@/lib/stripe'
 
 // Public lookup for the customer-facing success page. Given a Checkout session
 // id (which only the person who paid has), returns a small summary so the page
-// can confirm what was paid. Restricted to ad-hoc payment-link sessions.
+// can confirm what was paid. Restricted to ad-hoc payment-link sessions. The
+// session may belong to either brand's Stripe account.
 export async function GET(request: NextRequest) {
   const sessionId = request.nextUrl.searchParams.get('session_id') || ''
   if (!sessionId) return NextResponse.json({ error: 'Missing session_id' }, { status: 400 })
 
   try {
-    const session = await stripe.checkout.sessions.retrieve(sessionId)
-    if (session.metadata?.kind !== 'adhoc_payment_link') {
+    const session = await retrieveCheckoutSession(sessionId)
+    if (!session || session.metadata?.kind !== 'adhoc_payment_link') {
       return NextResponse.json({ error: 'Not found.' }, { status: 404 })
     }
     return NextResponse.json({

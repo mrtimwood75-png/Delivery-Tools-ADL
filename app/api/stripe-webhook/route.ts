@@ -5,6 +5,7 @@ import { sendAutoReply } from '@/lib/sms'
 import { sendEmail } from '@/lib/email'
 import { formatAmountAu } from '@/lib/format'
 import { getEmailTemplates, renderEmailTemplate } from '@/lib/paymentMessage'
+import { verifyStripeEvent } from '@/lib/stripe'
 
 // Ad-hoc payment links (from the standalone Payment Link tool).
 //
@@ -82,25 +83,20 @@ async function confirmAdhocPaymentLink(session: Stripe.Checkout.Session, amountP
   return true
 }
 
-const stripeKey = process.env.STRIPE_SECRET_KEY
-if (!stripeKey) throw new Error('Missing STRIPE_SECRET_KEY')
-
-const stripe = new Stripe(stripeKey)
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
-
 // Stripe payment webhook. When a checkout link is paid, deduct the amount from
 // the order's balance. The stripe_payments table makes this idempotent so
-// retried/duplicate events never double-count a payment.
+// retried/duplicate events never double-count a payment. The signature is
+// verified against whichever brand's Stripe account signed it (the dashboard
+// carries both BCA and Transforma).
 export async function POST(request: NextRequest) {
   const signature = request.headers.get('stripe-signature') || ''
   const raw = await request.text()
 
   let event: Stripe.Event
   try {
-    if (!webhookSecret) throw new Error('Missing STRIPE_WEBHOOK_SECRET')
-    event = stripe.webhooks.constructEvent(raw, signature, webhookSecret)
+    event = verifyStripeEvent(raw, signature).event
   } catch (error) {
-    return NextResponse.json({ error: `Signature verification failed: ${error instanceof Error ? error.message : 'error'}` }, { status: 400 })
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Signature verification failed' }, { status: 400 })
   }
 
   try {

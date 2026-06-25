@@ -1,16 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import Stripe from 'stripe'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
-
-const stripeKey = process.env.STRIPE_SECRET_KEY
-if (!stripeKey) throw new Error('Missing STRIPE_SECRET_KEY')
-
-const stripe = new Stripe(stripeKey)
+import { stripeForBrand } from '@/lib/stripe'
+import { brandForSource } from '@/lib/brand'
 
 type StripeOrderRow = {
   id: string
   order_number: string
   payment_due: number
+  source: string | null
   stripe_link: string | null
   stripe_link_amount: number | null
   customers: { name: string | null; phone: string | null } | { name: string | null; phone: string | null }[] | null
@@ -23,7 +20,7 @@ export async function POST(request: NextRequest) {
 
     let query = supabaseAdmin
       .from('delivery_orders')
-      .select('id, order_number, payment_due, stripe_link, stripe_link_amount, customers(name, phone)')
+      .select('id, order_number, payment_due, source, stripe_link, stripe_link_amount, customers(name, phone)')
       .gt('payment_due', 0)
 
     if (orderIds.length) query = query.in('id', orderIds)
@@ -48,6 +45,9 @@ export async function POST(request: NextRequest) {
 
       const customer = Array.isArray(order.customers) ? order.customers[0] : order.customers
       const customerName = customer?.name || 'Customer'
+
+      // Mint the link in the Stripe account of the brand that owns this order.
+      const stripe = stripeForBrand(brandForSource(order.source))
 
       const session = await stripe.checkout.sessions.create({
         mode: 'payment',

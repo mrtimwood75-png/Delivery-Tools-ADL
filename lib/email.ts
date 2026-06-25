@@ -67,8 +67,8 @@ async function sendViaGraph(from: string, to: string, subject: string, text: str
   if (!response.ok) throw new Error((await response.text().catch(() => '')) || `Graph HTTP ${response.status}`)
 }
 
-export async function sendEmail(options: { to: string; subject: string; text: string }) {
-  const from = process.env.EMAIL_FROM || process.env.SMTP_USER
+export async function sendEmail(options: { to: string; subject: string; text: string; from?: string }) {
+  const from = options.from || process.env.EMAIL_FROM || process.env.SMTP_USER
   if (!from) throw new Error('Missing EMAIL_FROM')
   const { to, subject, text } = options
   if (process.env.SENDGRID_API_KEY) return sendViaSendGrid(from, to, subject, text)

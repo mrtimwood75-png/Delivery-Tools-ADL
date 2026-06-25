@@ -1,16 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import Stripe from 'stripe'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { sendEmail } from '@/lib/email'
 import { sendMessageMediaSms } from '@/lib/sms'
 import { formatAmountAu, normalizeMobileAu } from '@/lib/format'
 import { getRequestUser } from '@/lib/apiAuth'
 import { getSmsTemplate, renderSmsTemplate } from '@/lib/paymentMessage'
-
-const stripeKey = process.env.STRIPE_SECRET_KEY
-if (!stripeKey) throw new Error('Missing STRIPE_SECRET_KEY')
-
-const stripe = new Stripe(stripeKey)
+import { stripeForBrand, resolveOrderBrand } from '@/lib/stripe'
+import { brandConfig } from '@/lib/brand'
 
 function isEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
@@ -49,6 +45,11 @@ export async function POST(request: NextRequest) {
     // on whatever domain the tool is served from.
     const origin = request.headers.get('origin') || `https://${request.headers.get('host') || 'bcb-dashboard.vercel.app'}`
 
+    // Charge through the Stripe account of the brand this order belongs to.
+    const brand = await resolveOrderBrand(orderNumber)
+    const brandCfg = brandConfig(brand)
+    const stripe = stripeForBrand(brand)
+
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       ...(orderNumber ? { client_reference_id: orderNumber } : {}),
@@ -83,16 +84,16 @@ export async function POST(request: NextRequest) {
       const template = await getSmsTemplate()
       const message = renderSmsTemplate(template, { customerName, amount, orderNumber, link: stripeUrl })
       try {
-        const messageId = await sendMessageMediaSms(customerPhone, message)
+        const messageId = await sendMessageMediaSms(customerPhone, message, brandCfg.smsFrom)
         deliveryStatus = `SMS sent (${messageId})`
       } catch (error) {
         deliveryStatus = `SMS failed: ${error instanceof Error ? error.message : 'send failed'}`
       }
     } else if (deliveryMethod === 'email') {
-      const subject = orderNumber ? `Payment link for order ${orderNumber}` : 'Your BoConcept payment link'
-      const text = `Hi ${customerName},\n\nPlease use the secure link below to pay ${formatAmountAu(amount)}${orderNumber ? ` for order ${orderNumber}` : ''}:\n\n${stripeUrl}\n\nThank you,\n${salespersonName || 'BoConcept'}`
+      const subject = orderNumber ? `Payment link for order ${orderNumber}` : `Your ${brandCfg.displayName} payment link`
+      const text = `Hi ${customerName},\n\nPlease use the secure link below to pay ${formatAmountAu(amount)}${orderNumber ? ` for order ${orderNumber}` : ''}:\n\n${stripeUrl}\n\nThank you,\n${salespersonName || brandCfg.displayName}`
       try {
-        await sendEmail({ to: customerEmail, subject, text })
+        await sendEmail({ to: customerEmail, subject, text, from: brandCfg.emailFrom || undefined })
         deliveryStatus = 'Email sent'
       } catch (error) {
         deliveryStatus = `Email failed: ${error instanceof Error ? error.message : 'send failed'}`

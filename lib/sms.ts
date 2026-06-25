@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { formatAmountAu, normalizeMobileAu } from '@/lib/format'
+import { brandConfig, brandForSource } from '@/lib/brand'
 
 export type SmsCustomer = { name: string; phone: string | null; address: string | null; street_address: string | null; suburb: string | null; state: string | null; postcode: string | null }
 export type OrderRow = {
@@ -14,11 +15,12 @@ export type OrderRow = {
   salesperson: string | null
   stripe_link: string | null
   sms_status: string | null
+  source: string | null
   customers: SmsCustomer | SmsCustomer[] | null
 }
 
 // Columns needed to fill any template merge field.
-export const SMS_ORDER_SELECT = 'id, order_number, customer_id, payment_due, order_status, goods_in_date, goods_ready_date, delivery_date, salesperson, stripe_link, sms_status, customers(name, phone, address, street_address, suburb, state, postcode)'
+export const SMS_ORDER_SELECT = 'id, order_number, customer_id, payment_due, order_status, goods_in_date, goods_ready_date, delivery_date, salesperson, stripe_link, sms_status, source, customers(name, phone, address, street_address, suburb, state, postcode)'
 
 function formatDateAu(value: string | null | undefined) {
   if (!value) return ''
@@ -50,10 +52,10 @@ export function buildMessage(order: OrderRow, templateText: string) {
     .replaceAll('{delivery_date}', formatDateAu(order.delivery_date))
 }
 
-export async function sendMessageMediaSms(toMobile: string, message: string) {
+export async function sendMessageMediaSms(toMobile: string, message: string, fromSenderId?: string) {
   const apiKey = process.env.MESSAGEMEDIA_API_KEY
   const apiSecret = process.env.MESSAGEMEDIA_API_SECRET
-  const senderId = process.env.MESSAGEMEDIA_SENDER_ID || ''
+  const senderId = (fromSenderId || process.env.MESSAGEMEDIA_SENDER_ID || '')
   const baseUrl = (process.env.MESSAGEMEDIA_BASE_URL || 'https://api.messagemedia.com').replace(/\/$/, '')
 
   if (!apiKey || !apiSecret) throw new Error('Missing MessageMedia credentials')
@@ -123,8 +125,10 @@ export async function sendOrderTemplate(orderId: string, tpl: { id: string; temp
 
   const message = buildMessage(order as unknown as OrderRow, tpl.template_text)
   const base = { customer_id: order.customer_id, order_id: order.id, direction: 'outbound', phone: normalizeMobileAu(mobile), body: message, template_id: tpl.id, purpose }
+  // Send from the brand the customer bought from (BCA vs Transforma).
+  const smsFrom = brandConfig(brandForSource((order as { source?: string | null }).source)).smsFrom
   try {
-    const messageId = await sendMessageMediaSms(mobile, message)
+    const messageId = await sendMessageMediaSms(mobile, message, smsFrom)
     await supabaseAdmin.from('sms_messages').insert({ ...base, status: 'sent', provider_message_id: messageId })
     return { ok: true, reason: `sent (${messageId})` }
   } catch (error) {
