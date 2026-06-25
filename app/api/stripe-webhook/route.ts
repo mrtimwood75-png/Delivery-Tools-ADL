@@ -1,0 +1,162 @@
+import { NextRequest, NextResponse } from 'next/server'
+import Stripe from 'stripe'
+import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { sendAutoReply } from '@/lib/sms'
+import { sendEmail } from '@/lib/email'
+import { formatAmountAu } from '@/lib/format'
+import { getEmailTemplates, renderEmailTemplate } from '@/lib/paymentMessage'
+
+// Ad-hoc payment links (from the standalone Payment Link tool).
+//
+// If the link's order number matches a delivery_orders row, the payment is
+// applied to that order: the amount is subtracted from its balance and it's
+// marked Paid once the balance reaches zero, exactly like a dashboard payment.
+// If there's no matching order, the payment stays entirely in the payment app —
+// the shared stripe_payments ledger row is acknowledged immediately so it never
+// shows on the dashboard. Either way the salesperson gets a confirmation email.
+async function confirmAdhocPaymentLink(session: Stripe.Checkout.Session, amountPaid: number) {
+  const { data: link } = await supabaseAdmin
+    .from('payment_links')
+    .select('id, customer_name, order_number, salesperson_email, salesperson_name, status')
+    .eq('stripe_session_id', session.id)
+    .maybeSingle()
+  if (!link) return false
+
+  await supabaseAdmin
+    .from('payment_links')
+    .update({ status: 'paid', amount_paid: amountPaid, paid_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq('id', link.id)
+
+  const orderNumber = String(link.order_number || session.metadata?.order_number || '').trim()
+
+  // Apply to a dashboard order when the order number matches.
+  let allocatedOrder: string | null = null
+  let remainingDue = 0
+  if (orderNumber) {
+    const { data: order } = await supabaseAdmin
+      .from('delivery_orders')
+      .select('id, payment_due')
+      .eq('order_number', orderNumber)
+      .maybeSingle()
+    if (order) {
+      remainingDue = Math.max(0, Math.round((Number(order.payment_due || 0) - amountPaid) * 100) / 100)
+      await supabaseAdmin
+        .from('delivery_orders')
+        .update({ payment_due: remainingDue, payment_status: remainingDue > 0 ? 'Unpaid' : 'Paid' })
+        .eq('id', order.id)
+      await supabaseAdmin.from('stripe_payments').update({ order_id: order.id }).eq('session_id', session.id)
+      const ack = await sendAutoReply(order.id, 'payment_received')
+      console.log('[stripe-webhook] adhoc payment applied to order', { orderId: order.id, orderNumber, remainingDue, ...ack })
+      allocatedOrder = orderNumber
+    }
+  }
+
+  // No matching order → keep it off the dashboard (auto-acknowledge the ledger row).
+  if (!allocatedOrder) {
+    await supabaseAdmin
+      .from('stripe_payments')
+      .update({ acknowledged_at: new Date().toISOString() })
+      .eq('session_id', session.id)
+  }
+
+  const returnTo = String(link.salesperson_email || session.metadata?.salesperson_email || '').trim()
+  if (returnTo) {
+    const allocationNote = allocatedOrder
+      ? `Applied to order ${allocatedOrder} on the dashboard. Remaining balance: ${formatAmountAu(remainingDue)}${remainingDue === 0 ? ' (marked Paid).' : '.'}`
+      : `This payment was not applied to a dashboard order (no matching order number was found).`
+    const { subject: subjectTpl, body: bodyTpl } = await getEmailTemplates()
+    const fields = {
+      customerName: link.customer_name || '',
+      orderNumber,
+      amount: amountPaid,
+      paidAt: new Date().toLocaleString('en-AU'),
+      allocationNote
+    }
+    try {
+      await sendEmail({ to: returnTo, subject: renderEmailTemplate(subjectTpl, fields), text: renderEmailTemplate(bodyTpl, fields) })
+      await supabaseAdmin.from('payment_links').update({ confirmation_sent_at: new Date().toISOString() }).eq('id', link.id)
+    } catch (error) {
+      console.error('[stripe-webhook] payment-link confirmation email failed', error)
+    }
+  }
+  return true
+}
+
+const stripeKey = process.env.STRIPE_SECRET_KEY
+if (!stripeKey) throw new Error('Missing STRIPE_SECRET_KEY')
+
+const stripe = new Stripe(stripeKey)
+const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
+
+// Stripe payment webhook. When a checkout link is paid, deduct the amount from
+// the order's balance. The stripe_payments table makes this idempotent so
+// retried/duplicate events never double-count a payment.
+export async function POST(request: NextRequest) {
+  const signature = request.headers.get('stripe-signature') || ''
+  const raw = await request.text()
+
+  let event: Stripe.Event
+  try {
+    if (!webhookSecret) throw new Error('Missing STRIPE_WEBHOOK_SECRET')
+    event = stripe.webhooks.constructEvent(raw, signature, webhookSecret)
+  } catch (error) {
+    return NextResponse.json({ error: `Signature verification failed: ${error instanceof Error ? error.message : 'error'}` }, { status: 400 })
+  }
+
+  try {
+    if (event.type === 'checkout.session.completed') {
+      const session = event.data.object as Stripe.Checkout.Session
+      if (session.payment_status === 'paid') {
+        const amountPaid = Number(session.amount_total || 0) / 100
+        const orderNumber = String(session.client_reference_id || session.metadata?.order_number || '')
+        const sessionId = String(session.id)
+
+        // Claim this session once — duplicate events hit the unique constraint and stop here.
+        const claim = await supabaseAdmin
+          .from('stripe_payments')
+          .insert({ session_id: sessionId, event_id: event.id, order_number: orderNumber, amount: amountPaid })
+          .select('id')
+          .single()
+
+        if (claim.error) {
+          // Unique violation = already processed; acknowledge so Stripe stops retrying.
+          return NextResponse.json({ received: true, duplicate: true })
+        }
+
+        // Ad-hoc Payment Link tool: confirm to the salesperson, skip order logic.
+        if (session.metadata?.kind === 'adhoc_payment_link') {
+          const handled = await confirmAdhocPaymentLink(session, amountPaid)
+          if (handled) return NextResponse.json({ received: true, paymentLink: true })
+        }
+
+        let order: { id: string; payment_due: number } | null = null
+        const bySession = await supabaseAdmin.from('delivery_orders').select('id, payment_due').eq('stripe_session_id', sessionId).maybeSingle()
+        if (bySession.data) order = bySession.data as { id: string; payment_due: number }
+        else if (orderNumber) {
+          const byNumber = await supabaseAdmin.from('delivery_orders').select('id, payment_due').eq('order_number', orderNumber).maybeSingle()
+          if (byNumber.data) order = byNumber.data as { id: string; payment_due: number }
+        }
+
+        if (order) {
+          const newDue = Math.max(0, Math.round((Number(order.payment_due || 0) - amountPaid) * 100) / 100)
+          await supabaseAdmin
+            .from('delivery_orders')
+            .update({ payment_due: newDue, payment_status: newDue > 0 ? 'Unpaid' : 'Paid' })
+            .eq('id', order.id)
+          await supabaseAdmin.from('stripe_payments').update({ order_id: order.id }).eq('session_id', sessionId)
+          // Best-effort acknowledgement SMS (only sends if a template is tagged 'payment_received').
+          const ack = await sendAutoReply(order.id, 'payment_received')
+          console.log('[stripe-webhook] payment-received SMS', { orderId: order.id, ...ack })
+        }
+      }
+    }
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Webhook handling failed.' }, { status: 500 })
+  }
+
+  return NextResponse.json({ received: true })
+}
+
+export async function GET() {
+  return NextResponse.json({ ok: true, endpoint: 'stripe-webhook' })
+}
