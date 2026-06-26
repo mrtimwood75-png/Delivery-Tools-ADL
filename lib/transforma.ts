@@ -240,7 +240,7 @@ const xmlParser = new XMLParser({
 
 type ParsedResponse = Record<string, unknown>
 
-async function postOptionsXml(xmlBody: string): Promise<ParsedResponse> {
+async function postOptionsXml(xmlBody: string, retries = 3): Promise<ParsedResponse> {
   const optionsUrl = (process.env.OPTIONS_URL || '').trim()
   const clientKey = (process.env.OPTIONS_CLIENT_KEY || '').trim()
   if (!optionsUrl) throw new Error('Missing OPTIONS_URL')
@@ -248,7 +248,7 @@ async function postOptionsXml(xmlBody: string): Promise<ParsedResponse> {
 
   let lastError: unknown = null
   let lastResponseText = ''
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < retries; attempt++) {
     try {
       const controller = new AbortController()
       const timeout = setTimeout(() => controller.abort(), 60_000)
@@ -466,23 +466,31 @@ async function probeFields(table: string, condField: string, condValue: string, 
   try {
     const clientKey = (process.env.OPTIONS_CLIENT_KEY || '').trim()
     const xml = buildRequestXml(clientKey, table, fields, [[condField, 'equals', clean(condValue)]], { sortBy: condField, maxRecords: 1 })
-    const recs = parseTableRecords(await postOptionsXml(xml), table)
+    const recs = parseTableRecords(await postOptionsXml(xml, 1), table)
     return { ok: true, record: recs[0] || {} }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) }
   }
 }
 
-// Probe whether a table exists and what columns it has (empty fields = all).
+// Probe whether a table exists and what columns it has. Tries "all fields"
+// (empty <fields>) then a fielded fallback, fast (no retries).
 async function probeTable(table: string) {
-  try {
-    const clientKey = (process.env.OPTIONS_CLIENT_KEY || '').trim()
-    const xml = '<?xml version="1.0" encoding="utf-8"?>' + `<request clientKey="${escapeXml(clientKey)}"><table name="${escapeXml(table)}" sortBy="" maxRecords="2" firstRecord="1" requestType=""><fields></fields><conditions></conditions></table></request>`
-    const recs = parseTableRecords(await postOptionsXml(xml), table)
-    return { table, ok: true, count: recs.length, keys: Object.keys(recs[0] || {}), sample: recs[0] || {} }
-  } catch (e) {
-    return { table, ok: false, error: e instanceof Error ? e.message : String(e) }
+  const clientKey = (process.env.OPTIONS_CLIENT_KEY || '').trim()
+  const allXml = '<?xml version="1.0" encoding="utf-8"?>' + `<request clientKey="${escapeXml(clientKey)}"><table name="${escapeXml(table)}" sortBy="" maxRecords="3" firstRecord="1" requestType=""><fields></fields><conditions></conditions></table></request>`
+  const fieldedXml = buildRequestXml(clientKey, table, ['AREA', 'CODE', 'DESC', 'NAME', 'DESCRIPTION', 'SHORTNAME', 'LONGNAME', 'SALESMAN', 'SALESPERSON', 'REP', 'EMAIL'], [], { sortBy: '', maxRecords: 3 })
+  let lastErr = ''
+  let emptyOk: { table: string; ok: true; via: string; count: number; keys: string[]; sample: OptionsRecord } | null = null
+  for (const [via, xml] of [['all', allXml], ['fielded', fieldedXml]] as [string, string][]) {
+    try {
+      const recs = parseTableRecords(await postOptionsXml(xml, 1), table)
+      if (recs.length) return { table, ok: true as const, via, count: recs.length, keys: Object.keys(recs[0]), sample: recs[0] }
+      emptyOk = { table, ok: true as const, via, count: 0, keys: [], sample: {} }
+    } catch (e) {
+      lastErr = e instanceof Error ? e.message : String(e)
+    }
   }
+  return emptyOk || { table, ok: false as const, error: lastErr }
 }
 
 export async function fetchTransformaDebug(fromDate?: string) {
@@ -501,7 +509,7 @@ export async function fetchTransformaDebug(fromDate?: string) {
   ])
 
   // Discover the sales-area table that maps AREA codes (e.g. "SS") to a name.
-  const areaTables = ['DRAREA', 'DRSAREA', 'DRSALES', 'DRREP', 'DRSREP', 'DRSALESMAN']
+  const areaTables = ['DRAREA', 'DRSAREA', 'DRSALES', 'DRSALE', 'DRREP', 'DRSREP', 'DRSMAN', 'DRSALESMAN', 'DRSALESAREA', 'GLREP', 'SALESAREA', 'DRSPER', 'DRSALESPERSON']
   const areaProbe = []
   for (const t of areaTables) areaProbe.push(await probeTable(t))
 
