@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import CustomerNotificationTool from '../components/CustomerNotificationTool'
 import PackingListImport from '../components/PackingListImport'
+import TransformaSync from '../components/TransformaSync'
 import BrandLogos from '@/components/BrandLogos'
 
 export default function ImportPage() {
@@ -17,6 +18,7 @@ export default function ImportPage() {
         <div className="grid grid-2" style={{ alignItems: 'start', gap: 18 }}>
           <CustomerNotificationTool />
           <PackingListImport />
+          <TransformaSync />
         </div>
       </div>
     </main>

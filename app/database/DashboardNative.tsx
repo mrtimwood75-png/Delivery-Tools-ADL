@@ -118,17 +118,17 @@ export default function DashboardNative() {
   const tableScrollRef = useRef<HTMLDivElement | null>(null)
   const [tableScrollW, setTableScrollW] = useState(2100)
 
-  useEffect(() => { loadOrders(); loadStatuses(); loadSalesNames(); const email = localStorage.getItem('delivery_tools_email') || ''; if (email) checkAdmin(email) }, [])
+  useEffect(() => { loadOrders(); loadStatuses(); loadSalesNames(); checkAdmin() }, [])
   useEffect(() => { const poll = () => { loadUnread(); loadPayments() }; poll(); const id = setInterval(poll, 20000); return () => clearInterval(id) }, [])
   useEffect(() => { try { const d = document.documentElement.getAttribute('data-density') || localStorage.getItem('delivery_density') || 'normal'; setDensityState(d) } catch { /* ignore */ } }, [])
-  useEffect(() => { document.title = unread.total > 0 ? `(${unread.total}) ● Customer Delivery Dashboard` : 'Customer Delivery Dashboard'; return () => { document.title = 'Customer Delivery Dashboard' } }, [unread.total])
+  useEffect(() => { document.title = unread.total > 0 ? `(${unread.total}) ● Warehouse Dashboard (ADL)` : 'Warehouse Dashboard (ADL)'; return () => { document.title = 'Warehouse Dashboard (ADL)' } }, [unread.total])
   useEffect(() => { const el = tableScrollRef.current; if (!el) return; const update = () => setTableScrollW(el.scrollWidth); update(); const ro = new ResizeObserver(update); ro.observe(el); return () => ro.disconnect() }, [])
   function syncScrollFromTop() { if (tableScrollRef.current && topScrollRef.current) tableScrollRef.current.scrollLeft = topScrollRef.current.scrollLeft }
   function syncScrollFromTable() { if (topScrollRef.current && tableScrollRef.current) topScrollRef.current.scrollLeft = tableScrollRef.current.scrollLeft }
   useEffect(() => () => { if (undoTimer.current) { clearTimeout(undoTimer.current); const pending = pendingDelete.current; if (pending) commitDelete(pending.item) } }, [])
   useEffect(() => { if (!openDateFilter) return; const onDocClick = (e: MouseEvent) => { const t = e.target as HTMLElement | null; if (!t) return; if (dateFilterRef.current && dateFilterRef.current.contains(t)) return; if (typeof t.closest === 'function' && t.closest('.date-filter')) return; setOpenDateFilter(null) }; document.addEventListener('click', onDocClick); return () => document.removeEventListener('click', onDocClick) }, [openDateFilter])
 
-  async function checkAdmin(email: string) { const r = await fetch(`/api/me?email=${encodeURIComponent(email)}`); const j = await r.json(); setAdmin(Boolean(j.isAdmin)) }
+  async function checkAdmin() { const r = await fetch('/api/me'); const j = await r.json(); setAdmin(Boolean(j.isAdmin)) }
   async function loadStatuses() { const r = await fetch('/api/customer-status-options', { cache: 'no-store' }); const j = await r.json(); if (Array.isArray(j.options) && j.options.length) setStatuses(j.options) }
   async function loadSalesNames() { try { const r = await fetch('/api/salespeople', { cache: 'no-store' }); const j = await r.json(); const names: Record<string, string> = {}; const emails: Record<string, string> = {}; for (const s of j.salespeople || []) { if (s.code) { names[s.code] = s.name || ''; if (s.email) emails[s.code] = s.email } } setSalesNames(names); setSalesEmails(emails) } catch { /* ignore */ } }
   async function loadOrders(v: 'active' | 'archived' = view) { setStatus('Loading dashboard...'); const r = await fetch(`/api/orders?view=${v}`, { cache: 'no-store' }); const j = await r.json(); if (!r.ok) return setStatus(j.error || 'Could not load orders'); setOrders((j.orders || []).map((order: Order) => ({ ...order, ready_status: order.ready_status === 'Ready' ? 'Ready' : 'Not Ready' }))); setStatus(`Loaded ${j.orders?.length || 0} ${v === 'archived' ? 'archived' : ''} records`.replace('  ', ' ')) }
