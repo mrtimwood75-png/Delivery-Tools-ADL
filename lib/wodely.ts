@@ -191,18 +191,27 @@ export type WodelyPushResult = {
   created: number
   skipped: number
   failed: number
+  archived: number
+  archivedIds: string[]
   results: Array<{ orderId: string; status: 'created' | 'skipped' | 'failed'; reason?: string }>
 }
 
 export async function pushOrdersToWodely(ids: string[]): Promise<WodelyPushResult> {
   const results: WodelyPushResult['results'] = []
-  if (!ids.length) return { created: 0, skipped: 0, failed: 0, results }
+  if (!ids.length) return { created: 0, skipped: 0, failed: 0, archived: 0, archivedIds: [], results }
 
   const { data, error } = await supabaseAdmin
     .from('delivery_orders')
     .select('id, order_number, payment_due, salesperson, order_notes, delivery_date, source, customers(name, phone, address, street_address, suburb, state, postcode), delivery_order_items(product_code, product_name, quantity)')
     .in('id', ids)
   if (error) throw new Error(error.message)
+
+  // Map order number -> internal id so we can archive what lands in Wodely.
+  const idByOrderNumber = new Map<string, string>()
+  for (const row of (data as unknown as OrderRow[])) {
+    const num = clean(row.order_number).toLowerCase()
+    if (num) idByOrderNumber.set(num, row.id)
+  }
 
   const built = (data as unknown as OrderRow[]).map(buildPayload)
 
@@ -237,10 +246,29 @@ export async function pushOrdersToWodely(ids: string[]): Promise<WodelyPushResul
     }
   }
 
+  // Archive every order that is now in Wodely (freshly created, or skipped
+  // because it was already there) so it drops out of the active job list.
+  const archivedIds: string[] = []
+  for (const r of results) {
+    if (r.status !== 'created' && r.status !== 'skipped') continue
+    const internal = idByOrderNumber.get(r.orderId.toLowerCase())
+    if (internal) archivedIds.push(internal)
+  }
+  if (archivedIds.length) {
+    const { error: archiveError } = await supabaseAdmin
+      .from('delivery_orders')
+      .update({ archived_at: new Date().toISOString() })
+      .in('id', archivedIds)
+      .is('archived_at', null)
+    if (archiveError) throw new Error(`Pushed to Wodely but could not archive: ${archiveError.message}`)
+  }
+
   return {
     created: results.filter((r) => r.status === 'created').length,
     skipped: results.filter((r) => r.status === 'skipped').length,
     failed: results.filter((r) => r.status === 'failed').length,
+    archived: archivedIds.length,
+    archivedIds,
     results
   }
 }
