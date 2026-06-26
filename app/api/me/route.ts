@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { canWrite } from '@/lib/roles'
 
 // Identity for the client UI. Derived from the signed-in session — the legacy
 // ?email= query param is ignored so it can't be spoofed.
@@ -9,7 +10,7 @@ export async function GET() {
   const email = session?.user?.email?.toLowerCase() || ''
 
   if (!email) {
-    return NextResponse.json({ user: null, isAdmin: false, canAccessSettings: false, canAccessDashboard: false, canAccessPayments: false })
+    return NextResponse.json({ user: null, isAdmin: false, canAccessSettings: false, canAccessDashboard: false, canAccessPayments: false, canWrite: false, role: null })
   }
 
   const { data, error } = await supabaseAdmin
@@ -30,6 +31,8 @@ export async function GET() {
     isAdmin: role === 'admin',
     canAccessSettings: role === 'admin' || role === 'manager',
     canAccessDashboard: data ? data.can_access_dashboard !== false : false,
-    canAccessPayments: data ? data.can_access_payments === true : false
+    canAccessPayments: data ? data.can_access_payments === true : false,
+    canWrite: data ? canWrite(role) : false,
+    role
   })
 }

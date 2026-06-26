@@ -3,11 +3,17 @@
 import Link from 'next/link'
 import { FormEvent, useEffect, useState } from 'react'
 import BrandLogos from '@/components/BrandLogos'
+import { ASSIGNABLE_ROLES } from '@/lib/roles'
 
 type AppUser = { id: string; email: string; full_name: string | null; role: string; is_active: boolean; can_access_dashboard?: boolean; can_access_payments?: boolean }
 type Density = 'compact' | 'normal' | 'spacious'
 
-const roles = ['standard', 'manager', 'admin']
+const roles = ASSIGNABLE_ROLES
+const roleLabels: Record<string, string> = { admin: 'Admin', manager: 'Manager', read_only: 'Read Only', standard: 'Standard (legacy)' }
+const roleLabel = (r: string) => roleLabels[r] || r
+// Options for a user's role select, always including their current role (so a
+// legacy 'standard' user still shows correctly).
+const roleOptionsFor = (current: string) => (roles.includes(current) ? roles : [current, ...roles])
 const defaultCustomerStatuses = ['Open', 'Awaiting Customer', 'Awaiting Goods', 'Delivery Booked', 'Delivered', 'Cancelled']
 const densityOptions: { value: Density; label: string; help: string }[] = [
   { value: 'compact', label: 'Compact', help: 'Reduced line spacing. Best for high-volume dashboard work.' },
@@ -23,7 +29,7 @@ export default function AdminTemplatesPage() {
   const [myRole, setMyRole] = useState('standard')
   const [newUserEmail, setNewUserEmail] = useState('')
   const [newUserName, setNewUserName] = useState('')
-  const [newUserRole, setNewUserRole] = useState('standard')
+  const [newUserRole, setNewUserRole] = useState('read_only')
   const [newUserPassword, setNewUserPassword] = useState('')
   const [newUserDash, setNewUserDash] = useState(true)
   const [newUserPay, setNewUserPay] = useState(false)
@@ -235,7 +241,7 @@ export default function AdminTemplatesPage() {
     if (!response.ok) return setStatus(result.error || 'User save failed')
     setNewUserEmail('')
     setNewUserName('')
-    setNewUserRole('standard')
+    setNewUserRole('read_only')
     setNewUserPassword('')
     setNewUserDash(true)
     setNewUserPay(false)
@@ -354,7 +360,7 @@ export default function AdminTemplatesPage() {
           <form className="grid grid-2" onSubmit={saveUser}>
             <label>Email<input value={newUserEmail} onChange={(event) => setNewUserEmail(event.target.value)} required /></label>
             <label>Full name<input value={newUserName} onChange={(event) => setNewUserName(event.target.value)} /></label>
-            <label>Role<select value={newUserRole} onChange={(event) => setNewUserRole(event.target.value)}>{roles.map((role) => <option key={role} value={role}>{role}</option>)}</select></label>
+            <label>Role<select value={newUserRole} onChange={(event) => setNewUserRole(event.target.value)}>{roles.map((role) => <option key={role} value={role}>{roleLabel(role)}</option>)}</select></label>
             <label>Initial password<input type="text" value={newUserPassword} onChange={(event) => setNewUserPassword(event.target.value)} placeholder="min 6 characters" autoComplete="new-password" /></label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}><input type="checkbox" checked={newUserDash} onChange={(event) => setNewUserDash(event.target.checked)} style={{ width: 'auto' }} />Dashboard access</label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}><input type="checkbox" checked={newUserPay} onChange={(event) => setNewUserPay(event.target.checked)} style={{ width: 'auto' }} />Payment App access</label>
@@ -367,7 +373,7 @@ export default function AdminTemplatesPage() {
               <tbody>{users.map((user) => <tr key={user.id}>
                 <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}>{user.email}</td>
                 <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}><input defaultValue={user.full_name || ''} onBlur={(event) => updateUser(user, { full_name: event.target.value })} /></td>
-                <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}><select value={user.role} onChange={(event) => updateUser(user, { role: event.target.value })}>{roles.map((role) => <option key={role}>{role}</option>)}</select></td>
+                <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}><select value={user.role} onChange={(event) => updateUser(user, { role: event.target.value })}>{roleOptionsFor(user.role).map((role) => <option key={role} value={role}>{roleLabel(role)}</option>)}</select></td>
                 <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}><input type="checkbox" checked={user.is_active} onChange={(event) => updateUser(user, { is_active: event.target.checked })} /></td>
                 <td style={{ padding: 8, borderBottom: '1px solid var(--border)', textAlign: 'center' }}><input type="checkbox" checked={user.can_access_dashboard !== false} onChange={(event) => updateUser(user, { can_access_dashboard: event.target.checked })} /></td>
                 <td style={{ padding: 8, borderBottom: '1px solid var(--border)', textAlign: 'center' }}><input type="checkbox" checked={user.can_access_payments === true} onChange={(event) => updateUser(user, { can_access_payments: event.target.checked })} /></td>

@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { ACCEPTED_ROLES, READ_ONLY_ROLE } from '@/lib/roles'
 
-const roles = ['standard', 'manager', 'admin']
+// New users default to read-only; legacy 'standard' is still accepted.
+const roles = ACCEPTED_ROLES
+const DEFAULT_ROLE = READ_ONLY_ROLE
 
 async function findAuthUserId(email: string): Promise<string | null> {
   for (let page = 1; page <= 25; page += 1) {
@@ -46,7 +49,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const email = String(body.email || '').trim().toLowerCase()
     const full_name = String(body.full_name || '').trim()
-    const role = roles.includes(String(body.role || 'standard')) ? String(body.role || 'standard') : 'standard'
+    const role = roles.includes(String(body.role || DEFAULT_ROLE)) ? String(body.role || DEFAULT_ROLE) : DEFAULT_ROLE
     const is_active = body.is_active !== false
     const password = String(body.password || '')
 
@@ -102,7 +105,7 @@ export async function PATCH(request: NextRequest) {
     const update: Record<string, unknown> = {}
     if ('email' in body) update.email = String(body.email || '').trim().toLowerCase()
     if ('full_name' in body) update.full_name = String(body.full_name || '').trim()
-    if ('role' in body) update.role = roles.includes(String(body.role)) ? String(body.role) : 'standard'
+    if ('role' in body) update.role = roles.includes(String(body.role)) ? String(body.role) : DEFAULT_ROLE
     if ('is_active' in body) update.is_active = Boolean(body.is_active)
     if ('can_access_dashboard' in body) update.can_access_dashboard = Boolean(body.can_access_dashboard)
     if ('can_access_payments' in body) update.can_access_payments = Boolean(body.can_access_payments)
