@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 
+const BRANDS = new Set(['bca', 'transforma'])
+function cleanBrand(value: unknown): string | null {
+  const v = String(value || '').trim().toLowerCase()
+  return BRANDS.has(v) ? v : null
+}
+
 export async function GET() {
   const { data, error } = await supabaseAdmin
     .from('salespeople')
-    .select('id, code, name, email')
+    .select('id, code, name, email, brand')
     .order('code', { ascending: true })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -16,11 +22,11 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const code = String(body.code || '').trim()
     if (!code) return NextResponse.json({ error: 'Salesperson code is required.' }, { status: 400 })
-    const payload = { code, name: String(body.name || '').trim() || null, email: String(body.email || '').trim().toLowerCase() || null, updated_at: new Date().toISOString() }
+    const payload = { code, name: String(body.name || '').trim() || null, email: String(body.email || '').trim().toLowerCase() || null, brand: cleanBrand(body.brand), updated_at: new Date().toISOString() }
     const { data, error } = await supabaseAdmin
       .from('salespeople')
       .upsert(payload, { onConflict: 'code' })
-      .select('id, code, name, email')
+      .select('id, code, name, email, brand')
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -38,12 +44,13 @@ export async function PATCH(request: NextRequest) {
     const update: Record<string, unknown> = { updated_at: new Date().toISOString() }
     if ('name' in body) update.name = String(body.name || '').trim() || null
     if ('email' in body) update.email = String(body.email || '').trim().toLowerCase() || null
+    if ('brand' in body) update.brand = cleanBrand(body.brand)
 
     const { data, error } = await supabaseAdmin
       .from('salespeople')
       .update(update)
       .eq('id', id)
-      .select('id, code, name, email')
+      .select('id, code, name, email, brand')
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })

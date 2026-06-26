@@ -90,7 +90,10 @@ export async function ingestRows(
   const salesCodes = Array.from(new Set(cleaned.map((row) => String(row.salesperson || '').trim()).filter(Boolean)))
   if (salesCodes.length) {
     const withName = salesCodes.filter((c) => nameByCode.has(c)).map((c) => ({ code: c, name: nameByCode.get(c) }))
-    const withoutName = salesCodes.filter((c) => !nameByCode.has(c)).map((c) => ({ code: c }))
+    // New codes are tagged with the originating brand so admin can group them
+    // (bca vs transforma). ignoreDuplicates means existing rows — and any brand
+    // the admin set on them — are never overwritten.
+    const withoutName = salesCodes.filter((c) => !nameByCode.has(c)).map((c) => ({ code: c, brand: source }))
     if (withName.length) await supabaseAdmin.from('salespeople').upsert(withName, { onConflict: 'code' })
     if (withoutName.length) await supabaseAdmin.from('salespeople').upsert(withoutName, { onConflict: 'code', ignoreDuplicates: true })
   }

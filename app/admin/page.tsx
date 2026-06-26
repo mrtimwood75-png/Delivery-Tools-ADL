@@ -28,8 +28,9 @@ export default function AdminTemplatesPage() {
   const [newUserDash, setNewUserDash] = useState(true)
   const [newUserPay, setNewUserPay] = useState(false)
   const [payTpl, setPayTpl] = useState({ sms: '', emailSubject: '', emailBody: '' })
-  const [salespeople, setSalespeople] = useState<{ id: string; code: string; name: string | null; email: string | null }[]>([])
+  const [salespeople, setSalespeople] = useState<{ id: string; code: string; name: string | null; email: string | null; brand: string | null }[]>([])
   const [newSalesCode, setNewSalesCode] = useState('')
+  const [newSalesBrand, setNewSalesBrand] = useState('transforma')
   const [deliveryEmail, setDeliveryEmail] = useState({ subject: '', body: '', enabled: false })
   const [testEmailTo, setTestEmailTo] = useState('')
   const [deliveryConfirm, setDeliveryConfirm] = useState({ confirmed_status: '', rejected_status: '' })
@@ -119,7 +120,7 @@ export default function AdminTemplatesPage() {
     setSalespeople(result.salespeople || [])
   }
 
-  async function updateSalesperson(id: string, patch: { name?: string; email?: string }) {
+  async function updateSalesperson(id: string, patch: { name?: string; email?: string; brand?: string | null }) {
     const response = await fetch('/api/salespeople', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, ...patch }) })
     const result = await response.json()
     if (!response.ok) return setStatus(result.error || 'Salesperson update failed')
@@ -130,7 +131,7 @@ export default function AdminTemplatesPage() {
   async function addSalesperson() {
     const code = newSalesCode.trim()
     if (!code) return
-    const response = await fetch('/api/salespeople', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }) })
+    const response = await fetch('/api/salespeople', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, brand: newSalesBrand }) })
     const result = await response.json()
     if (!response.ok) return setStatus(result.error || 'Could not add salesperson')
     setNewSalesCode('')
@@ -401,21 +402,32 @@ export default function AdminTemplatesPage() {
 
         {isAdmin ? <section className="card grid" style={{ boxShadow: 'none' }}>
           <h2 style={{ margin: 0 }}>Salespeople</h2>
-          <p className="muted" style={{ margin: 0 }}>Record each salesperson&apos;s <strong>code</strong>, <strong>name</strong> and <strong>email</strong>. Codes appear here automatically from imports (the Transforma sync&apos;s AREA code, e.g. &quot;SS&quot;, and the BCA Tour Totals &quot;Recipient&quot; column). The <strong>name</strong> you enter is what shows on the dashboard in place of the code; the <strong>email</strong> is used for the delivery notification and the dashboard&apos;s email button.</p>
+          <p className="muted" style={{ margin: 0 }}>Record each salesperson&apos;s <strong>code</strong>, <strong>name</strong> and <strong>email</strong>, grouped by store. Codes appear here automatically from imports (the Transforma sync&apos;s AREA code, e.g. &quot;SS&quot;, and the BCA Tour Totals &quot;Recipient&quot; column) and are tagged with the store they came from. The <strong>name</strong> you enter is what shows on the dashboard in place of the code; the <strong>email</strong> is used for the delivery notification and the dashboard&apos;s email button. Use the <strong>Store</strong> dropdown to move anyone who lands in the wrong group.</p>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-            <label style={{ flex: 1, minWidth: 180 }}>Add a code manually<input value={newSalesCode} onChange={(event) => setNewSalesCode(event.target.value)} placeholder="e.g. jesll" /></label>
+            <label style={{ flex: 1, minWidth: 160 }}>Add a code manually<input value={newSalesCode} onChange={(event) => setNewSalesCode(event.target.value)} placeholder="e.g. SS" /></label>
+            <label style={{ minWidth: 180 }}>Store<select value={newSalesBrand} onChange={(event) => setNewSalesBrand(event.target.value)}><option value="transforma">Transforma</option><option value="bca">BoConcept Adelaide</option></select></label>
             <button type="button" onClick={addSalesperson}>Add</button>
           </div>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead><tr>{['Code', 'Name', 'Email'].map((heading) => <th key={heading} style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid var(--border)' }}>{heading}</th>)}</tr></thead>
-              <tbody>{salespeople.length ? salespeople.map((sp) => <tr key={sp.id}>
-                <td style={{ padding: 8, borderBottom: '1px solid var(--border)', fontWeight: 700 }}>{sp.code}</td>
-                <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}><input defaultValue={sp.name || ''} placeholder="Full name (optional)" onBlur={(event) => updateSalesperson(sp.id, { name: event.target.value })} /></td>
-                <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}><input type="email" defaultValue={sp.email || ''} placeholder="name@boconcept.com.au" onBlur={(event) => updateSalesperson(sp.id, { email: event.target.value })} /></td>
-              </tr>) : <tr><td colSpan={3} style={{ padding: 8 }} className="muted">No salesperson codes yet — they appear after your first import (Transforma sync or BCA Tour Totals), or add one manually above.</td></tr>}</tbody>
-            </table>
-          </div>
+          {([{ key: 'bca', label: 'BoConcept Adelaide' }, { key: 'transforma', label: 'Transforma' }, { key: '', label: 'Unassigned' }] as { key: string; label: string }[]).map((group) => {
+            const rows = salespeople.filter((sp) => (sp.brand || '') === group.key)
+            if (group.key === '' && !rows.length) return null
+            return (
+              <div key={group.label || 'unassigned'} style={{ marginTop: 4 }}>
+                <h3 style={{ margin: '8px 0 6px', fontSize: 15 }}>{group.label} <span className="muted" style={{ fontWeight: 400 }}>({rows.length})</span></h3>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead><tr>{['Code', 'Name', 'Email', 'Store'].map((heading) => <th key={heading} style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid var(--border)' }}>{heading}</th>)}</tr></thead>
+                    <tbody>{rows.length ? rows.map((sp) => <tr key={sp.id}>
+                      <td style={{ padding: 8, borderBottom: '1px solid var(--border)', fontWeight: 700 }}>{sp.code}</td>
+                      <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}><input defaultValue={sp.name || ''} placeholder="Full name (optional)" onBlur={(event) => updateSalesperson(sp.id, { name: event.target.value })} /></td>
+                      <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}><input type="email" defaultValue={sp.email || ''} placeholder="name@boconcept.com.au" onBlur={(event) => updateSalesperson(sp.id, { email: event.target.value })} /></td>
+                      <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}><select value={sp.brand || ''} onChange={(event) => updateSalesperson(sp.id, { brand: event.target.value || null })}><option value="">— Unassigned —</option><option value="transforma">Transforma</option><option value="bca">BoConcept Adelaide</option></select></td>
+                    </tr>) : <tr><td colSpan={4} style={{ padding: 8 }} className="muted">None yet.</td></tr>}</tbody>
+                  </table>
+                </div>
+              </div>
+            )
+          })}
         </section> : null}
 
         {isAdmin ? <section className="card grid" style={{ boxShadow: 'none' }}>

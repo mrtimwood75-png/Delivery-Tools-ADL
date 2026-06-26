@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { toProperCase } from '@/lib/text'
 
 type PackingRow = {
   order_number: string
@@ -25,14 +26,14 @@ function cleanRows(rows: PackingRow[]) {
   return rows
     .map((row) => ({
       order_number: cleanText(row.order_number).toUpperCase(),
-      customer_name: cleanText(row.customer_name),
+      customer_name: toProperCase(cleanText(row.customer_name)),
       mobile: cleanText(row.mobile),
-      street_address: cleanText(row.street_address),
-      suburb: cleanText(row.suburb),
+      street_address: toProperCase(cleanText(row.street_address)),
+      suburb: toProperCase(cleanText(row.suburb)),
       state: cleanText(row.state).toUpperCase(),
       postcode: cleanText(row.postcode),
       delivery_notes: cleanText(row.delivery_notes),
-      product_name: cleanText(row.product_name),
+      product_name: toProperCase(cleanText(row.product_name)),
       product_code: cleanText(row.product_code),
       quantity: Number(row.quantity || 1),
       cubic_meters: Number(row.cubic_meters || 0),

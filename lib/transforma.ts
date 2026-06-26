@@ -1,5 +1,6 @@
 import { XMLParser } from 'fast-xml-parser'
 import type { ImportRow } from '@/lib/ingestOrders'
+import { toProperCase } from '@/lib/text'
 
 // Port of the Transforma "Options API" ingest half of the Wodely converter
 // (wodely_app.py). Pulls sales-order lines, headers, payments and contacts out
@@ -51,15 +52,6 @@ function toInt(value: unknown): number {
 
 function joinNonBlank(parts: unknown[], sep = ', '): string {
   return parts.map((p) => clean(p)).filter(Boolean).join(sep)
-}
-
-// Options data arrives ALL-CAPS (e.g. "MR MARK OREL", "12 SMITH ST"). Convert
-// such text to proper/title case for the dashboard. Strings that already carry
-// lowercase letters are left untouched (don't clobber intentional casing).
-function toProperCase(value: unknown): string {
-  const text = clean(value)
-  if (!text || /[a-z]/.test(text)) return text
-  return text.replace(/[A-Za-zÀ-ÿ]+/g, (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
 }
 
 
