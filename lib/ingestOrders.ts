@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { lookupSuburb } from '@/lib/postcode'
 
 // A single normalized order row, source-agnostic. Both the BCA packing-list
 // import and the Transforma Options-API sync hand rows in this shape to
@@ -122,8 +123,16 @@ export async function ingestRows(
       const customerInsert: Record<string, unknown> = { name: row.customer_name, phone: row.mobile || '', address: row.street_address || '' }
       if (row.street_address) customerInsert.street_address = row.street_address
       if (row.suburb) customerInsert.suburb = row.suburb
-      if (row.state) customerInsert.state = row.state
-      if (row.postcode) customerInsert.postcode = row.postcode
+      // Derive postcode/state from the suburb when the source didn't supply them
+      // (e.g. Transforma's Options address carries only street + suburb).
+      let state = row.state || ''
+      let postcode = row.postcode || ''
+      if (row.suburb && (!state || !postcode)) {
+        const hit = lookupSuburb(row.suburb)
+        if (hit) { state = state || hit.state; postcode = postcode || hit.postcode }
+      }
+      if (state) customerInsert.state = state
+      if (postcode) customerInsert.postcode = postcode
 
       const { data: customer, error: customerError } = await supabaseAdmin
         .from('customers')

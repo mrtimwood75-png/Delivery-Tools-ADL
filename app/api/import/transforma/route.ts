@@ -30,7 +30,7 @@ async function runSync(request: NextRequest) {
     // ?debug=1 returns the raw first-order records (field names/values) for
     // verifying mappings, without ingesting anything.
     if (request.nextUrl.searchParams.get('debug') === '1') {
-      return NextResponse.json(await fetchTransformaDebug(from || undefined))
+      return NextResponse.json(await fetchTransformaDebug(from || undefined), { headers: { 'Cache-Control': 'no-store' } })
     }
     const { rows, orderCount, fromDate } = await fetchTransformaRows(from || undefined)
     // Never overwrite an order already on the dashboard.
