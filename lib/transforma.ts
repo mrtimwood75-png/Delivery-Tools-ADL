@@ -138,6 +138,10 @@ function parseAuAddress(parts: Array<string | undefined>): { street_address: str
     const street = segs.length > 1 ? segs.slice(0, -1).join(', ') : (suburb ? '' : before)
     return { street_address: street || before, suburb, state: m[1].toUpperCase(), postcode: m[2] }
   }
+  // No state/postcode line: treat the last line as the suburb, the rest as street.
+  if (lines.length >= 2) {
+    return { street_address: lines.slice(0, -1).join(', '), suburb: lines[lines.length - 1], state: '', postcode: '' }
+  }
   return { street_address: full, suburb: '', state: '', postcode: '' }
 }
 
@@ -155,13 +159,13 @@ function calculateOrderTotalFromLines(lines: OptionsRecord[]): number {
   return Math.round(total * 100) / 100
 }
 
-function calculateCodAmount(header: OptionsRecord, lines: OptionsRecord[], paymentsTotal: number): number {
-  // Options API line total inc GST = QTYORD * (PRICE + GSTDOLL); payments live in
-  // DRTRAN/DRHIST as TYPE = "PA". COD never goes below zero.
-  const lineTotal = calculateOrderTotalFromLines(lines)
-  const headerTotal = toFloat(header.TOTAMOUNT)
-  const orderTotal = lineTotal > 0 ? lineTotal : headerTotal
-  return Math.max(Math.round((orderTotal - paymentsTotal) * 100) / 100, 0)
+function calculateCodAmount(header: OptionsRecord, lines: OptionsRecord[]): number {
+  // Balance to collect = order total minus what's recorded as paid. Use the
+  // authoritative header fields: the DRTRAN/DRHIST "PA" query over-counts (it
+  // also sums the sale transaction). COD never goes below zero.
+  const orderTotal = toFloat(header.TOTAMOUNT) || calculateOrderTotalFromLines(lines)
+  const paid = toFloat(header.PAID) + toFloat(header.TEMPPAID)
+  return Math.max(Math.round((orderTotal - paid) * 100) / 100, 0)
 }
 
 function extractPhoneFromText(...values: unknown[]): string {
@@ -339,26 +343,6 @@ async function fetchHeader(orderNo: string): Promise<OptionsRecord> {
   return records[0] || {}
 }
 
-async function fetchPaymentsForOrder(orderNo: string): Promise<number> {
-  const clientKey = (process.env.OPTIONS_CLIENT_KEY || '').trim()
-  const order = clean(orderNo)
-  const fieldsXml = '<field>SALESORDER</field><field>ACCDE</field><field>TRANDTE</field><field>TYPE</field><field>TOTAMOUNT</field>'
-  let tableXml = ''
-  for (const tableName of ['DRTRAN', 'DRHIST']) {
-    tableXml +=
-      `<table name="${tableName}" sortBy="SALESORDER" maxRecords="0" firstRecord="1" requestType="">` +
-      `<fields>${fieldsXml}</fields>` +
-      '<conditions>' +
-      `<condition field="SALESORDER" type="equals">${escapeXml(order)}</condition>` +
-      '<condition field="TYPE" type="equals">PA</condition>' +
-      '</conditions>' +
-      '</table>'
-  }
-  const xmlBody = '<?xml version="1.0" encoding="utf-8"?>' + `<request clientKey="${escapeXml(clientKey)}">${tableXml}</request>`
-  const root = await postOptionsXml(xmlBody)
-  const records = [...parseTableRecords(root, 'DRTRAN'), ...parseTableRecords(root, 'DRHIST')]
-  return Math.round(records.reduce((sum, r) => sum + toFloat(r.TOTAMOUNT), 0) * 100) / 100
-}
 
 async function fetchContact(accde: string, contactName = ''): Promise<OptionsRecord> {
   const clientKey = (process.env.OPTIONS_CLIENT_KEY || '').trim()
@@ -387,7 +371,7 @@ async function fetchContact(accde: string, contactName = ''): Promise<OptionsRec
 // -----------------------
 // map one order -> one ImportRow
 // -----------------------
-function mapOrderToImportRow(orderNo: string, lines: OptionsRecord[], header: OptionsRecord, contact: OptionsRecord, paymentsTotal: number): ImportRow | null {
+function mapOrderToImportRow(orderNo: string, lines: OptionsRecord[], header: OptionsRecord, contact: OptionsRecord): ImportRow | null {
   if (!lines.length) return null
 
   // Import criterion: the order must have a booked delivery date (any line).
@@ -401,7 +385,7 @@ function mapOrderToImportRow(orderNo: string, lines: OptionsRecord[], header: Op
   })
   if (!keptLine) return null
 
-  const cod = calculateCodAmount(header, lines, paymentsTotal)
+  const cod = calculateCodAmount(header, lines)
   const recipientName = clean(header.DELNAME) || clean(header.CUSTNAME)
   if (!recipientName) return null
 
@@ -466,8 +450,7 @@ export async function fetchTransformaRows(fromDate?: string): Promise<Transforma
       contactCache.set(contactKey, accde ? await fetchContact(accde, header.CONTACT) : {})
     }
 
-    const paymentsTotal = await fetchPaymentsForOrder(orderNo)
-    const row = mapOrderToImportRow(orderNo, orderLines, header, contactCache.get(contactKey) || {}, paymentsTotal)
+    const row = mapOrderToImportRow(orderNo, orderLines, header, contactCache.get(contactKey) || {})
     if (row) rows.push(row)
   }
 
@@ -484,8 +467,7 @@ export async function fetchTransformaDebug(fromDate?: string) {
   const orderNo = clean(lines.find((l) => clean(l.ORDNO))?.ORDNO) || clean(lines[0].ORDNO)
   const orderLines = lines.filter((l) => clean(l.ORDNO) === orderNo)
   const header = await fetchHeader(orderNo)
-  const paymentsTotal = await fetchPaymentsForOrder(orderNo)
-  const computedCod = calculateCodAmount(header, orderLines, paymentsTotal)
+  const computedCod = calculateCodAmount(header, orderLines)
   return {
     fromDate: from,
     totalLineCount: lines.length,
@@ -494,7 +476,6 @@ export async function fetchTransformaDebug(fromDate?: string) {
     firstLine: orderLines[0] || {},
     headerKeys: Object.keys(header),
     header,
-    paymentsTotal,
     computedCod
   }
 }
