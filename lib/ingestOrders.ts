@@ -13,6 +13,13 @@ export type ImportRow = {
   product_name?: string
   product_code?: string
   quantity?: number
+  // Optional delivery address (Transforma supplies these from the Options API).
+  street_address?: string
+  suburb?: string
+  state?: string
+  postcode?: string
+  // Booked delivery date as YYYY-MM-DD (Transforma: BOOKOUT).
+  delivery_date?: string
   stripe_session_id?: string
   stripe_checkout_url?: string
   stripe_link_amount?: number
@@ -27,6 +34,7 @@ export type IngestResult = {
   imported: number
   created: number
   updated: number
+  skipped: number
   milliseconds: number
 }
 
@@ -47,14 +55,20 @@ function importPaymentStatus(balance: number) {
 
 // MERGE order rows from a given ingest source into Supabase.
 //
-// Each source only ever writes the fields it owns (payment, salesperson, stripe
-// link). Status, dates, notes, items and the delivery address an existing order
-// already carries are left untouched, so the two sources and the dashboard never
-// blank each other's data. New orders are tagged with the originating `source`.
-export async function ingestRows(rows: ImportRow[], { source }: { source: OrderSource }): Promise<IngestResult> {
+// New orders are created (tagged with the originating `source`, plus address and
+// booked delivery date when supplied). For existing orders:
+//  - updateExisting=true (BCA): only the fields this source owns are updated
+//    (payment, salesperson, stripe link); status, dates, notes and items are left
+//    untouched.
+//  - updateExisting=false (Transforma): the order is left completely untouched, so
+//    a later sync never overwrites edits made on the dashboard.
+export async function ingestRows(
+  rows: ImportRow[],
+  { source, updateExisting = true }: { source: OrderSource; updateExisting?: boolean }
+): Promise<IngestResult> {
   const cleaned = cleanRows(rows)
   if (!cleaned.length) {
-    return { imported: 0, created: 0, updated: 0, milliseconds: 0 }
+    return { imported: 0, created: 0, updated: 0, skipped: 0, milliseconds: 0 }
   }
 
   const startedAt = Date.now()
@@ -65,8 +79,6 @@ export async function ingestRows(rows: ImportRow[], { source }: { source: OrderS
     await supabaseAdmin.from('salespeople').upsert(salesCodes.map((code) => ({ code })), { onConflict: 'code', ignoreDuplicates: true })
   }
 
-  // Look up existing orders so we MERGE — only ever add/update the fields this
-  // source carries, and never blank data the other source or dashboard set.
   const { data: existingRows, error: existError } = await supabaseAdmin
     .from('delivery_orders')
     .select('id, order_number, customer_id')
@@ -76,6 +88,7 @@ export async function ingestRows(rows: ImportRow[], { source }: { source: OrderS
 
   let created = 0
   let updated = 0
+  let skipped = 0
 
   for (const row of cleaned) {
     const balance = Number(row.balance_payable || 0)
@@ -83,6 +96,11 @@ export async function ingestRows(rows: ImportRow[], { source }: { source: OrderS
     const existing = existingByNumber.get(row.order_number)
 
     if (existing) {
+      // Never overwrite an order already on the dashboard (Transforma).
+      if (!updateExisting) {
+        skipped += 1
+        continue
+      }
       // Only the fields this source owns. Status, dates, notes, items and the
       // delivery address are left exactly as they are.
       const orderUpdate: Record<string, unknown> = { payment_due: balance, payment_status: importPaymentStatus(balance) }
@@ -101,28 +119,37 @@ export async function ingestRows(rows: ImportRow[], { source }: { source: OrderS
       }
       updated += 1
     } else {
+      const customerInsert: Record<string, unknown> = { name: row.customer_name, phone: row.mobile || '', address: row.street_address || '' }
+      if (row.street_address) customerInsert.street_address = row.street_address
+      if (row.suburb) customerInsert.suburb = row.suburb
+      if (row.state) customerInsert.state = row.state
+      if (row.postcode) customerInsert.postcode = row.postcode
+
       const { data: customer, error: customerError } = await supabaseAdmin
         .from('customers')
-        .insert({ name: row.customer_name, phone: row.mobile || '', address: '' })
+        .insert(customerInsert)
         .select('id')
         .single()
       if (customerError || !customer) throw new Error(customerError?.message || 'Could not create customer.')
 
+      const orderInsert: Record<string, unknown> = {
+        order_number: row.order_number,
+        customer_id: customer.id,
+        source,
+        payment_status: importPaymentStatus(balance),
+        order_status: 'Open',
+        ready_status: 'Not Ready',
+        stripe_session_id: row.stripe_session_id || null,
+        stripe_link: row.stripe_checkout_url || null,
+        stripe_link_amount: Number(row.stripe_link_amount || 0),
+        payment_due: balance,
+        salesperson: sales || null
+      }
+      if (row.delivery_date) orderInsert.delivery_date = row.delivery_date
+
       const { data: order, error: orderError } = await supabaseAdmin
         .from('delivery_orders')
-        .insert({
-          order_number: row.order_number,
-          customer_id: customer.id,
-          source,
-          payment_status: importPaymentStatus(balance),
-          order_status: 'Open',
-          ready_status: 'Not Ready',
-          stripe_session_id: row.stripe_session_id || null,
-          stripe_link: row.stripe_checkout_url || null,
-          stripe_link_amount: Number(row.stripe_link_amount || 0),
-          payment_due: balance,
-          salesperson: sales || null
-        })
+        .insert(orderInsert)
         .select('id')
         .single()
       if (orderError || !order) throw new Error(orderError?.message || 'Could not create order.')
@@ -137,5 +164,5 @@ export async function ingestRows(rows: ImportRow[], { source }: { source: OrderS
     }
   }
 
-  return { imported: created + updated, created, updated, milliseconds: Date.now() - startedAt }
+  return { imported: created + updated, created, updated, skipped, milliseconds: Date.now() - startedAt }
 }

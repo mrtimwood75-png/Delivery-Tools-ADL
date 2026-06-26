@@ -106,6 +106,41 @@ function todayAdelaideIso(): string {
   return parts // en-CA yields YYYY-MM-DD
 }
 
+function isoDate(dt: Date): string {
+  return `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())}`
+}
+
+// The order's booked delivery date = the earliest valid BOOKOUT across its lines
+// (the soonest item delivery). Returns null if no line has a parseable date — the
+// import criterion requires a booked delivery date.
+function earliestBookoutIso(lines: OptionsRecord[]): string | null {
+  const dates = lines.map((l) => parseDateText(l.BOOKOUT)).filter((d): d is Date => d !== null)
+  if (!dates.length) return null
+  const min = dates.reduce((a, b) => (a < b ? a : b))
+  return isoDate(min)
+}
+
+const AU_STATES = 'NSW|VIC|QLD|SA|WA|TAS|NT|ACT'
+
+// Best-effort split of the Options DEL1–DEL4 address lines into the dashboard's
+// street/suburb/state/postcode. Always keeps the full address in street_address
+// so nothing is lost if the AU pattern doesn't match.
+function parseAuAddress(parts: Array<string | undefined>): { street_address: string; suburb: string; state: string; postcode: string } {
+  const lines = parts.map((p) => clean(p)).filter(Boolean)
+  const full = lines.join(', ')
+  if (!full) return { street_address: '', suburb: '', state: '', postcode: '' }
+  const stateRe = new RegExp(`(${AU_STATES})\\.?\\s+(\\d{4})\\b`, 'i')
+  const m = full.match(stateRe)
+  if (m && m.index !== undefined) {
+    const before = full.slice(0, m.index).replace(/[,\s]+$/, '')
+    const segs = before.split(',').map((s) => clean(s)).filter(Boolean)
+    const suburb = segs.length ? segs[segs.length - 1] : ''
+    const street = segs.length > 1 ? segs.slice(0, -1).join(', ') : (suburb ? '' : before)
+    return { street_address: street || before, suburb, state: m[1].toUpperCase(), postcode: m[2] }
+  }
+  return { street_address: full, suburb: '', state: '', postcode: '' }
+}
+
 // -----------------------
 // money / phone
 // -----------------------
@@ -355,6 +390,10 @@ async function fetchContact(accde: string, contactName = ''): Promise<OptionsRec
 function mapOrderToImportRow(orderNo: string, lines: OptionsRecord[], header: OptionsRecord, contact: OptionsRecord, paymentsTotal: number): ImportRow | null {
   if (!lines.length) return null
 
+  // Import criterion: the order must have a booked delivery date (any line).
+  const deliveryDate = earliestBookoutIso(lines)
+  if (!deliveryDate) return null
+
   // First non-excluded line supplies the product fields for the order.
   const keptLine = lines.find((line) => {
     const sku = clean(line.STOCKCODE).toUpperCase()
@@ -374,6 +413,7 @@ function mapOrderToImportRow(orderNo: string, lines: OptionsRecord[], header: Op
 
   const sku = clean(keptLine.STOCKCODE).toUpperCase()
   const description = clean(keptLine.DESC) || clean(keptLine.MEMODESC) || clean(keptLine.OVERDESC) || sku
+  const address = parseAuAddress([header.DEL1, header.DEL2, header.DEL3, header.DEL4])
 
   return {
     order_number: clean(orderNo),
@@ -383,7 +423,12 @@ function mapOrderToImportRow(orderNo: string, lines: OptionsRecord[], header: Op
     balance_payable: cod,
     product_code: sku,
     product_name: description,
-    quantity: toInt(keptLine.QTYORD)
+    quantity: toInt(keptLine.QTYORD),
+    street_address: address.street_address,
+    suburb: address.suburb,
+    state: address.state,
+    postcode: address.postcode,
+    delivery_date: deliveryDate
   }
 }
 
@@ -427,4 +472,29 @@ export async function fetchTransformaRows(fromDate?: string): Promise<Transforma
   }
 
   return { rows, orderCount: rows.length, fromDate: from }
+}
+
+// Diagnostic: returns the raw first-order line + header records (with their actual
+// field names/values) so field mappings (price/GST/total/address) can be verified
+// against a real Options response. Not used by the sync itself.
+export async function fetchTransformaDebug(fromDate?: string) {
+  const from = clean(fromDate) || todayAdelaideIso()
+  const lines = await fetchLinesFromDate(from)
+  if (!lines.length) return { fromDate: from, error: 'No DRSOLN lines returned for this date.' }
+  const orderNo = clean(lines.find((l) => clean(l.ORDNO))?.ORDNO) || clean(lines[0].ORDNO)
+  const orderLines = lines.filter((l) => clean(l.ORDNO) === orderNo)
+  const header = await fetchHeader(orderNo)
+  const paymentsTotal = await fetchPaymentsForOrder(orderNo)
+  const computedCod = calculateCodAmount(header, orderLines, paymentsTotal)
+  return {
+    fromDate: from,
+    totalLineCount: lines.length,
+    orderNo,
+    orderLineCount: orderLines.length,
+    firstLine: orderLines[0] || {},
+    headerKeys: Object.keys(header),
+    header,
+    paymentsTotal,
+    computedCod
+  }
 }

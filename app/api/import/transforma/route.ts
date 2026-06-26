@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ingestRows } from '@/lib/ingestOrders'
-import { fetchTransformaRows } from '@/lib/transforma'
+import { fetchTransformaRows, fetchTransformaDebug } from '@/lib/transforma'
 import { auth } from '@/auth'
 
 // Allow long Options-API sweeps (many per-order round trips).
@@ -27,8 +27,14 @@ async function runSync(request: NextRequest) {
 
   try {
     const from = request.nextUrl.searchParams.get('from') || undefined
+    // ?debug=1 returns the raw first-order records (field names/values) for
+    // verifying mappings, without ingesting anything.
+    if (request.nextUrl.searchParams.get('debug') === '1') {
+      return NextResponse.json(await fetchTransformaDebug(from || undefined))
+    }
     const { rows, orderCount, fromDate } = await fetchTransformaRows(from || undefined)
-    const result = await ingestRows(rows, { source: 'transforma' })
+    // Never overwrite an order already on the dashboard.
+    const result = await ingestRows(rows, { source: 'transforma', updateExisting: false })
     return NextResponse.json({ source: 'transforma', fromDate, orderCount, ...result })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Transforma sync failed.' }, { status: 500 })
