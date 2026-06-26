@@ -8,6 +8,7 @@ export type ImportRow = {
   send_sms?: boolean
   customer_name: string
   salesperson?: string
+  salesperson_name?: string
   mobile: string
   order_number: string
   balance_payable: number
@@ -74,10 +75,20 @@ export async function ingestRows(
 
   const startedAt = Date.now()
 
-  // Register any new salesperson codes so they appear in admin for email mapping.
+  // Register salesperson codes (so admin can map email), and set their name when
+  // the source resolved one (Transforma's AREA code -> salesperson name).
+  const nameByCode = new Map<string, string>()
+  for (const row of cleaned) {
+    const code = String(row.salesperson || '').trim()
+    const name = String(row.salesperson_name || '').trim()
+    if (code && name) nameByCode.set(code, name)
+  }
   const salesCodes = Array.from(new Set(cleaned.map((row) => String(row.salesperson || '').trim()).filter(Boolean)))
   if (salesCodes.length) {
-    await supabaseAdmin.from('salespeople').upsert(salesCodes.map((code) => ({ code })), { onConflict: 'code', ignoreDuplicates: true })
+    const withName = salesCodes.filter((c) => nameByCode.has(c)).map((c) => ({ code: c, name: nameByCode.get(c) }))
+    const withoutName = salesCodes.filter((c) => !nameByCode.has(c)).map((c) => ({ code: c }))
+    if (withName.length) await supabaseAdmin.from('salespeople').upsert(withName, { onConflict: 'code' })
+    if (withoutName.length) await supabaseAdmin.from('salespeople').upsert(withoutName, { onConflict: 'code', ignoreDuplicates: true })
   }
 
   const { data: existingRows, error: existError } = await supabaseAdmin

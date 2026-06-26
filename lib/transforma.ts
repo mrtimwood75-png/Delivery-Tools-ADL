@@ -424,6 +424,51 @@ export type TransformaResult = {
 
 // Pull every order with a delivery booked on/after fromDate (default: today in
 // Adelaide) and fold each into a single ImportRow ready for ingestRows().
+// Self-discover the Options sales-area table and map AREA codes (e.g. "SS") to
+// the salesperson's name. Tries candidate tables/columns until one covers the
+// codes we need. Best-effort: returns an empty map if nothing matches.
+async function fetchAreaMap(codes: string[]): Promise<Map<string, string>> {
+  const result = new Map<string, string>()
+  const wanted = new Set(codes.map((c) => clean(c).toUpperCase()).filter(Boolean))
+  if (!wanted.size) return result
+  const clientKey = (process.env.OPTIONS_CLIENT_KEY || '').trim()
+  const tables = ['DRAREA', 'DRSAREA', 'DRSALES', 'DRSALE', 'DRREP', 'DRSREP', 'DRSMAN', 'DRSALESMAN', 'DRSALESAREA', 'GLREP', 'SALESAREA', 'DRSPER', 'DRSALESPERSON']
+  const codeCols = ['AREA', 'CODE', 'SALESMAN', 'REP', 'SALESPERSON']
+  const nameCols = ['NAME', 'DESCRIPTION', 'DESC', 'LONGNAME', 'FULLNAME', 'SHORTNAME']
+
+  for (const table of tables) {
+    let records: OptionsRecord[] = []
+    try {
+      const allXml = '<?xml version="1.0" encoding="utf-8"?>' + `<request clientKey="${escapeXml(clientKey)}"><table name="${escapeXml(table)}" sortBy="" maxRecords="1000" firstRecord="1" requestType=""><fields></fields><conditions></conditions></table></request>`
+      records = parseTableRecords(await postOptionsXml(allXml, 1), table)
+    } catch { /* fall through to fielded */ }
+    if (!records.length) {
+      try {
+        const xml = buildRequestXml(clientKey, table, [...codeCols, ...nameCols], [], { sortBy: '', maxRecords: 1000 })
+        records = parseTableRecords(await postOptionsXml(xml, 1), table)
+      } catch { continue }
+    }
+    if (!records.length) continue
+
+    const sample = records[0]
+    const codeCol = codeCols.find((c) => c in sample)
+    const nameCol = nameCols.find((c) => c in sample && records.some((r) => clean(r[c])))
+    if (!codeCol || !nameCol) continue
+
+    const built = new Map<string, string>()
+    for (const r of records) {
+      const code = clean(r[codeCol]).toUpperCase()
+      const name = clean(r[nameCol])
+      if (code && name && code !== name) built.set(code, name)
+    }
+    if (Array.from(wanted).some((c) => built.has(c))) {
+      Array.from(wanted).forEach((c) => { const n = built.get(c); if (n) result.set(c, n) })
+      return result
+    }
+  }
+  return result
+}
+
 export async function fetchTransformaRows(fromDate?: string): Promise<TransformaResult> {
   const from = clean(fromDate) || todayAdelaideIso()
 
@@ -453,6 +498,18 @@ export async function fetchTransformaRows(fromDate?: string): Promise<Transforma
     const row = mapOrderToImportRow(orderNo, orderLines, header, contactCache.get(contactKey) || {})
     if (row) rows.push(row)
   }
+
+  // Resolve AREA codes to salesperson names (self-discovers the area table).
+  try {
+    const codes = Array.from(new Set(rows.map((r) => clean(r.salesperson)).filter(Boolean)))
+    const areaMap = await fetchAreaMap(codes)
+    if (areaMap.size) {
+      for (const r of rows) {
+        const name = areaMap.get(clean(r.salesperson).toUpperCase())
+        if (name) r.salesperson_name = name
+      }
+    }
+  } catch { /* name resolution is best-effort */ }
 
   return { rows, orderCount: rows.length, fromDate: from }
 }
