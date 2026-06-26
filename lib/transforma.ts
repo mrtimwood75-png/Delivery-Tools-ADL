@@ -460,6 +460,31 @@ export async function fetchTransformaRows(fromDate?: string): Promise<Transforma
 // Diagnostic: returns the raw first-order line + header records (with their actual
 // field names/values) so field mappings (price/GST/total/address) can be verified
 // against a real Options response. Not used by the sync itself.
+// Probe a table for an order with a candidate field set; the API returns the
+// fields it recognises, revealing which address columns actually exist.
+async function probeFields(table: string, condField: string, condValue: string, fields: string[]) {
+  try {
+    const clientKey = (process.env.OPTIONS_CLIENT_KEY || '').trim()
+    const xml = buildRequestXml(clientKey, table, fields, [[condField, 'equals', clean(condValue)]], { sortBy: condField, maxRecords: 1 })
+    const recs = parseTableRecords(await postOptionsXml(xml), table)
+    return { ok: true, record: recs[0] || {} }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+}
+
+// Probe whether a table exists and what columns it has (empty fields = all).
+async function probeTable(table: string) {
+  try {
+    const clientKey = (process.env.OPTIONS_CLIENT_KEY || '').trim()
+    const xml = '<?xml version="1.0" encoding="utf-8"?>' + `<request clientKey="${escapeXml(clientKey)}"><table name="${escapeXml(table)}" sortBy="" maxRecords="2" firstRecord="1" requestType=""><fields></fields><conditions></conditions></table></request>`
+    const recs = parseTableRecords(await postOptionsXml(xml), table)
+    return { table, ok: true, count: recs.length, keys: Object.keys(recs[0] || {}), sample: recs[0] || {} }
+  } catch (e) {
+    return { table, ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+}
+
 export async function fetchTransformaDebug(fromDate?: string) {
   const from = clean(fromDate) || todayAdelaideIso()
   const lines = await fetchLinesFromDate(from)
@@ -468,6 +493,18 @@ export async function fetchTransformaDebug(fromDate?: string) {
   const orderLines = lines.filter((l) => clean(l.ORDNO) === orderNo)
   const header = await fetchHeader(orderNo)
   const computedCod = calculateCodAmount(header, orderLines)
+
+  // Discover any suburb/state/postcode columns on the order header.
+  const addressProbe = await probeFields('DRSOTR', 'ORDNO', orderNo, [
+    'DEL1', 'DEL2', 'DEL3', 'DEL4', 'DELPCODE', 'DELPOSTCODE', 'POSTCODE', 'PCODE',
+    'DELSTATE', 'STATE', 'DELSUBURB', 'SUBURB', 'DELTOWN', 'DELCITY', 'DELADD1', 'DELADD2'
+  ])
+
+  // Discover the sales-area table that maps AREA codes (e.g. "SS") to a name.
+  const areaTables = ['DRAREA', 'DRSAREA', 'DRSALES', 'DRREP', 'DRSREP', 'DRSALESMAN']
+  const areaProbe = []
+  for (const t of areaTables) areaProbe.push(await probeTable(t))
+
   return {
     fromDate: from,
     totalLineCount: lines.length,
@@ -476,6 +513,9 @@ export async function fetchTransformaDebug(fromDate?: string) {
     firstLine: orderLines[0] || {},
     headerKeys: Object.keys(header),
     header,
-    computedCod
+    computedCod,
+    areaCode: clean(header.AREA),
+    addressProbe,
+    areaProbe
   }
 }
