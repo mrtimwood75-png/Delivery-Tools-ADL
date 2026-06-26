@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     // Land the customer on our own branded success page (passing the session id
     // so it can show what they paid). Derived from the request origin so it works
     // on whatever domain the tool is served from.
-    const origin = request.headers.get('origin') || `https://${request.headers.get('host') || 'bcb-dashboard.vercel.app'}`
+    const origin = request.headers.get('origin') || `https://${request.headers.get('host') || 'delivery-tools-adl.vercel.app'}`
 
     // Charge through the Stripe account of the brand this order belongs to.
     const brand = await resolveOrderBrand(orderNumber)

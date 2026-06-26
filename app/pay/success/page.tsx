@@ -2,17 +2,21 @@
 
 import { useEffect, useState } from 'react'
 import BrandLogos from '@/components/BrandLogos'
+import { STORE } from '@/lib/store'
 
 type Info = { paid: boolean; amount: number; customerName: string; orderNumber: string }
 
 const money = (n: number) => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(Number(n || 0))
+const BRAND_NAME = STORE === 'transforma' ? 'Transforma' : 'BoConcept Adelaide'
+const SUPPORT_ADDRESS = process.env.NEXT_PUBLIC_SUPPORT_ADDRESS || ''
+const SUPPORT_PHONE = process.env.NEXT_PUBLIC_SUPPORT_PHONE || ''
 
 export default function PaymentSuccessPage() {
   const [info, setInfo] = useState<Info | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    document.title = 'Payment received — BoConcept'
+    document.title = `Payment received — ${BRAND_NAME}`
     const sid = new URLSearchParams(window.location.search).get('session_id') || ''
     if (!sid) { setLoading(false); return }
     fetch(`/api/payment-link/session?session_id=${encodeURIComponent(sid)}`)
@@ -59,9 +63,9 @@ export default function PaymentSuccessPage() {
         </p>
 
         <div style={{ borderTop: '1px solid #eceae6', marginTop: 28, paddingTop: 20, color: '#6b6b6b', fontSize: 13, lineHeight: 1.6 }}>
-          <div style={{ fontWeight: 600, color: '#1a1a1a' }}>BoConcept Brisbane</div>
-          <div>977 Ann St, Fortitude Valley QLD 4006</div>
-          <div>Ph: <a href="tel:+61735555922" style={{ color: '#1a1a1a' }}>07 3555 5922</a></div>
+          <div style={{ fontWeight: 600, color: '#1a1a1a' }}>{BRAND_NAME}</div>
+          {SUPPORT_ADDRESS ? <div>{SUPPORT_ADDRESS}</div> : null}
+          {SUPPORT_PHONE ? <div>Ph: <a href={`tel:${SUPPORT_PHONE.replace(/\s+/g, '')}`} style={{ color: '#1a1a1a' }}>{SUPPORT_PHONE}</a></div> : null}
         </div>
       </div>
     </div>
