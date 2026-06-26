@@ -14,7 +14,7 @@ const MICROSOFT = STORE === 'bca'
     : null
 
 // The dashboard is shared, so it shows both brands; each payment app shows its own.
-const BRAND = STORE === 'transforma' ? 'Transforma' : STORE === 'bca' ? 'BoConcept Adelaide' : 'Adelaide Delivery'
+const BRAND = STORE === 'transforma' ? 'Transforma' : STORE === 'bca' ? 'BoConcept Adelaide' : 'Warehouse Dashboard (ADL)'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
