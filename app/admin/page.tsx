@@ -8,6 +8,13 @@ import { ASSIGNABLE_ROLES } from '@/lib/roles'
 type AppUser = { id: string; email: string; full_name: string | null; role: string; is_active: boolean; can_access_dashboard?: boolean; can_access_payments?: boolean }
 type Density = 'compact' | 'normal' | 'spacious'
 
+type Automation = { id: string; is_active: boolean; sort_order: number; trigger_type: string; trigger_template_id: string | null; trigger_keyword: string | null; match_mode: string | null; action_set_status: string | null; action_set_light: string | null; action_set_ready: string | null; action_send_template_id: string | null }
+type NewAutomation = { trigger_type: string; trigger_template_id: string; trigger_keyword: string; match_mode: string; action_set_status: string; action_set_light: string; action_set_ready: string; action_send_template_id: string }
+const emptyAuto: NewAutomation = { trigger_type: 'reply_to_template', trigger_template_id: '', trigger_keyword: '', match_mode: 'keyword', action_set_status: '', action_set_light: '', action_set_ready: '', action_send_template_id: '' }
+const lightLabel: Record<string, string> = { confirmed: '🟢 Confirmed', awaiting: '🟡 Awaiting', rejected: '🔴 Rejected', none: '⚪ Clear' }
+const triggerLabel: Record<string, string> = { template_sent: 'When this template is sent', reply_keyword: 'When a reply keyword matches', reply_to_template: 'When a customer replies to a template' }
+const matchLabel: Record<string, string> = { keyword: 'starts with keyword', affirmative: 'says YES (yes/1/yeah…)', negative: 'says NO (no/2/nope…)', any: 'sends any reply' }
+
 const roles = ASSIGNABLE_ROLES
 const roleLabels: Record<string, string> = { admin: 'Admin', manager: 'Manager', read_only: 'Read Only', standard: 'Standard (legacy)' }
 const roleLabel = (r: string) => roleLabels[r] || r
@@ -40,9 +47,9 @@ export default function AdminTemplatesPage() {
   const [deliveryEmail, setDeliveryEmail] = useState({ subject: '', body: '', enabled: false })
   const [testEmailTo, setTestEmailTo] = useState('')
   const [deliveryConfirm, setDeliveryConfirm] = useState({ confirmed_status: '', rejected_status: '' })
-  const [replyRules, setReplyRules] = useState<{ id: string; keyword: string; reply_template_id: string | null; set_status: string | null; set_light: string | null; is_active: boolean }[]>([])
   const [templateList, setTemplateList] = useState<{ id: string; name: string }[]>([])
-  const [newRule, setNewRule] = useState({ keyword: '', reply_template_id: '', set_status: '', set_light: '' })
+  const [automations, setAutomations] = useState<Automation[]>([])
+  const [newAuto, setNewAuto] = useState<NewAutomation>(emptyAuto)
 
   const isAdmin = myRole === 'admin'
 
@@ -54,7 +61,7 @@ export default function AdminTemplatesPage() {
     loadSalespeople()
     loadDeliveryEmail()
     loadDeliveryConfirm()
-    loadReplyRules()
+    loadAutomations()
     loadTemplateList()
     loadPaymentTemplates()
   }, [])
@@ -79,31 +86,58 @@ export default function AdminTemplatesPage() {
     if (response.ok) setTemplateList((result.templates || []).map((t: { id: string; name: string }) => ({ id: t.id, name: t.name })))
   }
 
-  async function loadReplyRules() {
-    const response = await fetch('/api/sms-reply-rules', { cache: 'no-store' })
+  async function loadAutomations() {
+    const response = await fetch('/api/automations', { cache: 'no-store' })
     const result = await response.json()
-    if (response.ok) setReplyRules(result.rules || [])
+    if (response.ok) setAutomations(result.automations || [])
   }
 
-  async function saveRule(rule: { id?: string; keyword: string; reply_template_id?: string | null; set_status?: string | null; set_light?: string | null; is_active?: boolean }) {
-    const response = await fetch('/api/sms-reply-rules', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rule) })
+  async function addAutomation() {
+    const payload = { ...newAuto }
+    if ((payload.trigger_type === 'template_sent' || payload.trigger_type === 'reply_to_template') && !payload.trigger_template_id) return setStatus('Pick the template for this trigger.')
+    if (payload.trigger_type === 'reply_keyword' && !payload.trigger_keyword.trim()) return setStatus('Enter the keyword for this trigger.')
+    if ((payload.match_mode === 'keyword') && payload.trigger_type !== 'template_sent' && !payload.trigger_keyword.trim()) return setStatus('Enter the keyword to match, or change the match type.')
+    if (!payload.action_set_status && !payload.action_set_light && !payload.action_set_ready && !payload.action_send_template_id) return setStatus('Pick at least one action.')
+    const response = await fetch('/api/automations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
     const result = await response.json()
-    if (!response.ok) return setStatus(result.error || 'Could not save rule')
-    await loadReplyRules()
-    setStatus('Reply rule saved.')
+    if (!response.ok) return setStatus(result.error || 'Could not add automation')
+    setNewAuto(emptyAuto)
+    await loadAutomations()
+    setStatus('Automation added.')
   }
 
-  async function addRule() {
-    if (!newRule.keyword.trim()) return setStatus('Enter a keyword for the rule.')
-    await saveRule({ keyword: newRule.keyword.trim(), reply_template_id: newRule.reply_template_id || null, set_status: newRule.set_status || null, set_light: newRule.set_light || null })
-    setNewRule({ keyword: '', reply_template_id: '', set_status: '', set_light: '' })
+  async function updateAutomation(id: string, patch: Record<string, unknown>) {
+    const response = await fetch('/api/automations', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, ...patch }) })
+    const result = await response.json()
+    if (!response.ok) return setStatus(result.error || 'Could not update automation')
+    await loadAutomations()
   }
 
-  async function deleteRule(id: string) {
-    const response = await fetch('/api/sms-reply-rules', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) })
-    if (!response.ok) { const result = await response.json(); return setStatus(result.error || 'Could not delete rule') }
-    await loadReplyRules()
-    setStatus('Reply rule deleted.')
+  async function moveAutomation(id: string, move: 'up' | 'down') {
+    await fetch('/api/automations', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, move }) })
+    await loadAutomations()
+  }
+
+  async function deleteAutomation(id: string) {
+    const response = await fetch('/api/automations', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) })
+    if (!response.ok) { const result = await response.json(); return setStatus(result.error || 'Could not delete automation') }
+    await loadAutomations()
+    setStatus('Automation deleted.')
+  }
+
+  function templateName(id: string | null) { return templateList.find((t) => t.id === id)?.name || (id ? '(unknown template)' : '') }
+  function automationWhen(a: Automation) {
+    if (a.trigger_type === 'template_sent') return `When "${templateName(a.trigger_template_id)}" is sent`
+    if (a.trigger_type === 'reply_to_template') return `When a customer replies to "${templateName(a.trigger_template_id)}" and ${matchLabel[a.match_mode || 'any']}${a.match_mode === 'keyword' && a.trigger_keyword ? ` "${a.trigger_keyword}"` : ''}`
+    return `When a reply ${matchLabel[a.match_mode || 'keyword']}${a.trigger_keyword ? ` "${a.trigger_keyword}"` : ''}`
+  }
+  function automationThen(a: Automation) {
+    const acts: string[] = []
+    if (a.action_set_status) acts.push(`status → ${a.action_set_status}`)
+    if (a.action_set_light) acts.push(`light → ${lightLabel[a.action_set_light] || a.action_set_light}`)
+    if (a.action_set_ready) acts.push(`prep → ${a.action_set_ready}`)
+    if (a.action_send_template_id) acts.push(`send "${templateName(a.action_send_template_id)}"`)
+    return acts.length ? acts.join(', ') : '(no actions)'
   }
 
   async function checkMe() {
@@ -328,30 +362,46 @@ export default function AdminTemplatesPage() {
         </section> : null}
 
         {isAdmin ? <section className="card grid" style={{ boxShadow: 'none' }}>
-          <h2 style={{ margin: 0 }} title="Custom rules that react to a word the customer texts. For fixed events (delivery yes/no, payment received) use a template's Built-in automation on the Templates page instead.">Custom keyword replies</h2>
-          <p className="muted" style={{ margin: 0 }}>When a customer&apos;s reply <strong>starts with a keyword you choose</strong> (the first word of their message), automatically send a template back and/or set the order status. Example: keyword <strong>DEBIT</strong> &rarr; send your &quot;Bank details&quot; template. Only the <strong>first word</strong> is checked, case-insensitive; the first matching rule wins.</p>
-          <p className="muted" style={{ margin: 0, fontSize: 12.5 }}>↳ This is for <strong>your own custom keywords</strong>. The fixed automations — the delivery <strong>YES/NO</strong> flow and the <strong>payment-received</strong> reply — are set on the <strong>Templates</strong> page via a template&apos;s <em>Built-in automation</em>, and run before these rules. Use this section only for everything else.</p>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead><tr>{['Keyword', 'Auto-send template', 'Set status (optional)', 'Set delivery light (optional)', 'Active', ''].map((heading) => <th key={heading} style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid var(--border)' }}>{heading}</th>)}</tr></thead>
-              <tbody>
-                {replyRules.map((rule) => <tr key={rule.id}>
-                  <td style={{ padding: 8, borderBottom: '1px solid var(--border)', fontWeight: 700 }}><input defaultValue={rule.keyword} onBlur={(event) => saveRule({ id: rule.id, keyword: event.target.value, reply_template_id: rule.reply_template_id, set_status: rule.set_status, set_light: rule.set_light, is_active: rule.is_active })} style={{ minWidth: 100 }} /></td>
-                  <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}><select value={rule.reply_template_id || ''} onChange={(event) => saveRule({ id: rule.id, keyword: rule.keyword, reply_template_id: event.target.value || null, set_status: rule.set_status, set_light: rule.set_light, is_active: rule.is_active })}><option value="">— No reply —</option>{templateList.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></td>
-                  <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}><select value={rule.set_status || ''} onChange={(event) => saveRule({ id: rule.id, keyword: rule.keyword, reply_template_id: rule.reply_template_id, set_status: event.target.value || null, set_light: rule.set_light, is_active: rule.is_active })}><option value="">— No change —</option>{customerStatuses.split(/\r?\n/).map((item) => item.trim()).filter(Boolean).map((item) => <option key={item} value={item}>{item}</option>)}</select></td>
-                  <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}><select value={rule.set_light || ''} onChange={(event) => saveRule({ id: rule.id, keyword: rule.keyword, reply_template_id: rule.reply_template_id, set_status: rule.set_status, set_light: event.target.value || null, is_active: rule.is_active })}><option value="">— No change —</option><option value="confirmed">🟢 Confirmed</option><option value="awaiting">🟡 Awaiting</option><option value="rejected">🔴 Rejected</option></select></td>
-                  <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}><input type="checkbox" checked={rule.is_active} onChange={(event) => saveRule({ id: rule.id, keyword: rule.keyword, reply_template_id: rule.reply_template_id, set_status: rule.set_status, set_light: rule.set_light, is_active: event.target.checked })} /></td>
-                  <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}><button type="button" className="btn-danger" onClick={() => deleteRule(rule.id)}>Delete</button></td>
-                </tr>)}
-                <tr>
-                  <td style={{ padding: 8 }}><input value={newRule.keyword} onChange={(event) => setNewRule((r) => ({ ...r, keyword: event.target.value }))} placeholder="e.g. DEBIT" style={{ minWidth: 100 }} /></td>
-                  <td style={{ padding: 8 }}><select value={newRule.reply_template_id} onChange={(event) => setNewRule((r) => ({ ...r, reply_template_id: event.target.value }))}><option value="">— No reply —</option>{templateList.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></td>
-                  <td style={{ padding: 8 }}><select value={newRule.set_status} onChange={(event) => setNewRule((r) => ({ ...r, set_status: event.target.value }))}><option value="">— No change —</option>{customerStatuses.split(/\r?\n/).map((item) => item.trim()).filter(Boolean).map((item) => <option key={item} value={item}>{item}</option>)}</select></td>
-                  <td style={{ padding: 8 }}><select value={newRule.set_light} onChange={(event) => setNewRule((r) => ({ ...r, set_light: event.target.value }))}><option value="">— No change —</option><option value="confirmed">🟢 Confirmed</option><option value="awaiting">🟡 Awaiting</option><option value="rejected">🔴 Rejected</option></select></td>
-                  <td style={{ padding: 8 }} colSpan={2}><button type="button" onClick={addRule}>Add rule</button></td>
-                </tr>
-              </tbody>
-            </table>
+          <h2 style={{ margin: 0 }}>Automations</h2>
+          <p className="muted" style={{ margin: 0 }}>One place for all &quot;if this, then that&quot; rules. Pick a <strong>trigger</strong> (a template being sent, or a customer reply) and the <strong>actions</strong> that follow (set the customer status, the delivery light, the prep status, and/or auto-send a template). For replies, rules run <strong>top to bottom and the first match wins</strong> — use the arrows to order them.</p>
+
+          {/* Builder */}
+          {(() => {
+            const statusOpts = customerStatuses.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)
+            const isReply = newAuto.trigger_type !== 'template_sent'
+            const matchOpts = newAuto.trigger_type === 'reply_keyword' ? ['keyword', 'any'] : ['keyword', 'affirmative', 'negative', 'any']
+            return (
+              <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12, display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>
+                <label style={{ minWidth: 230 }}>Trigger<select value={newAuto.trigger_type} onChange={(e) => setNewAuto((a) => ({ ...a, trigger_type: e.target.value, match_mode: e.target.value === 'reply_keyword' ? 'keyword' : a.match_mode }))}>{Object.keys(triggerLabel).map((k) => <option key={k} value={k}>{triggerLabel[k]}</option>)}</select></label>
+                {(newAuto.trigger_type === 'template_sent' || newAuto.trigger_type === 'reply_to_template') ? <label style={{ minWidth: 200 }}>Template<select value={newAuto.trigger_template_id} onChange={(e) => setNewAuto((a) => ({ ...a, trigger_template_id: e.target.value }))}><option value="">— Choose template —</option>{templateList.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label> : null}
+                {isReply ? <label style={{ minWidth: 170 }}>Reply matches<select value={newAuto.match_mode} onChange={(e) => setNewAuto((a) => ({ ...a, match_mode: e.target.value }))}>{matchOpts.map((m) => <option key={m} value={m}>{matchLabel[m]}</option>)}</select></label> : null}
+                {isReply && newAuto.match_mode === 'keyword' ? <label style={{ minWidth: 140 }}>Keyword<input value={newAuto.trigger_keyword} onChange={(e) => setNewAuto((a) => ({ ...a, trigger_keyword: e.target.value }))} placeholder="e.g. DEBIT" /></label> : null}
+                <div style={{ flexBasis: '100%', height: 0 }} />
+                <label style={{ minWidth: 180 }}>Set status<select value={newAuto.action_set_status} onChange={(e) => setNewAuto((a) => ({ ...a, action_set_status: e.target.value }))}><option value="">— No change —</option>{statusOpts.map((s) => <option key={s} value={s}>{s}</option>)}</select></label>
+                <label style={{ minWidth: 150 }}>Set light<select value={newAuto.action_set_light} onChange={(e) => setNewAuto((a) => ({ ...a, action_set_light: e.target.value }))}><option value="">— No change —</option>{Object.keys(lightLabel).map((k) => <option key={k} value={k}>{lightLabel[k]}</option>)}</select></label>
+                <label style={{ minWidth: 150 }}>Set prep<select value={newAuto.action_set_ready} onChange={(e) => setNewAuto((a) => ({ ...a, action_set_ready: e.target.value }))}><option value="">— No change —</option><option value="Ready">Ready</option><option value="Not Ready">Not Ready</option></select></label>
+                <label style={{ minWidth: 200 }}>Send template<select value={newAuto.action_send_template_id} onChange={(e) => setNewAuto((a) => ({ ...a, action_send_template_id: e.target.value }))}><option value="">— None —</option>{templateList.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
+                <button type="button" onClick={addAutomation}>Add automation</button>
+              </div>
+            )
+          })()}
+
+          {/* List */}
+          <div className="grid" style={{ gap: 8 }}>
+            {automations.length ? automations.map((a, i) => (
+              <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 10, opacity: a.is_active ? 1 : 0.55, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <button type="button" className="btn-secondary" style={{ padding: '0 8px', lineHeight: 1.4 }} disabled={i === 0} onClick={() => moveAutomation(a.id, 'up')} aria-label="Move up">▲</button>
+                  <button type="button" className="btn-secondary" style={{ padding: '0 8px', lineHeight: 1.4 }} disabled={i === automations.length - 1} onClick={() => moveAutomation(a.id, 'down')} aria-label="Move down">▼</button>
+                </div>
+                <div style={{ flex: 1, minWidth: 260 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13.5 }}>{automationWhen(a)}</div>
+                  <div className="muted" style={{ fontSize: 13 }}>→ {automationThen(a)}</div>
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5 }}><input type="checkbox" checked={a.is_active} onChange={(e) => updateAutomation(a.id, { is_active: e.target.checked })} style={{ width: 'auto' }} />Active</label>
+                <button type="button" className="btn-danger" onClick={() => deleteAutomation(a.id)}>Delete</button>
+              </div>
+            )) : <p className="muted" style={{ margin: 0 }}>No automations yet. Build one above.</p>}
           </div>
         </section> : null}
 

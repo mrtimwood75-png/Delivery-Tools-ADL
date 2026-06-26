@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { normalizeMobileAu } from '@/lib/format'
 import { buildMessage, sendMessageMediaSms, SMS_ORDER_SELECT, type OrderRow } from '@/lib/sms'
 import { brandConfig, brandForSource } from '@/lib/brand'
+import { runTemplateSent } from '@/lib/automations'
 
 function templateAudienceMatches(balance: number, audience: string) {
   const hasBalance = Number(balance || 0) > 0
@@ -59,6 +60,7 @@ export async function POST(request: NextRequest) {
     let failed = 0
     type LogRow = { customer_id: string | null; order_id: string; direction: string; phone: string; body: string; status: string; provider_message_id: string | null; template_id: string | null; sent_by: string | null; error: string | null; purpose: string | null }
     const logRows: LogRow[] = []
+    const sentOrderIds: string[] = []
 
     for (const order of (data || []) as OrderRow[]) {
       const customer = Array.isArray(order.customers) ? order.customers[0] : order.customers
@@ -87,6 +89,7 @@ export async function POST(request: NextRequest) {
           .update(orderUpdate)
           .eq('id', order.id)
         logRows.push({ customer_id: order.customer_id, order_id: order.id, direction: 'outbound', phone: normalizeMobileAu(mobile), body: message, status: 'sent', provider_message_id: messageId, template_id: templateId, sent_by: sentBy, error: null, purpose })
+        sentOrderIds.push(order.id)
         sent += 1
       } catch (innerError) {
         const errText = innerError instanceof Error ? innerError.message : 'SMS failed'
@@ -100,6 +103,13 @@ export async function POST(request: NextRequest) {
     }
 
     if (logRows.length) await supabaseAdmin.from('sms_messages').insert(logRows)
+
+    // Run any "when this template is sent" automations for each delivered message.
+    if (templateId && sentOrderIds.length) {
+      for (const oid of sentOrderIds) {
+        try { await runTemplateSent(oid, templateId) } catch (e) { console.error('[automation] template_sent failed', oid, e) }
+      }
+    }
 
     return NextResponse.json({ sent, failed })
   } catch (error) {
