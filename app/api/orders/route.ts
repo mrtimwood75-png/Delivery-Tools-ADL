@@ -243,6 +243,28 @@ export async function PATCH(request: NextRequest) {
         orderUpdate.delivery_email_sent_at = null
       }
     }
+    // Manually setting the order to the configured delivery confirm/reject
+    // status also flips the delivery light — the reverse of the customer-reply
+    // automation. Skipped when the caller is explicitly setting the light too.
+    if ('order_status' in body && !('delivery_confirmation' in body)) {
+      const newStatus = String(body.order_status || '').trim()
+      if (newStatus) {
+        const { data: ds } = await supabaseAdmin
+          .from('app_settings')
+          .select('setting_key, setting_value')
+          .in('setting_key', ['delivery_confirmed_status', 'delivery_rejected_status'])
+        const map: Record<string, string> = {}
+        for (const row of ds || []) map[row.setting_key] = String(row.setting_value || '').trim()
+        if (map.delivery_confirmed_status && newStatus === map.delivery_confirmed_status) {
+          orderUpdate.delivery_confirmation = 'confirmed'
+          orderUpdate.delivery_confirmation_at = new Date().toISOString()
+        } else if (map.delivery_rejected_status && newStatus === map.delivery_rejected_status) {
+          orderUpdate.delivery_confirmation = 'rejected'
+          orderUpdate.delivery_confirmation_at = new Date().toISOString()
+        }
+      }
+    }
+
     if ('archived_at' in body) orderUpdate.archived_at = body.archived_at
 
     if ('order_number' in body) {
@@ -301,7 +323,7 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ order: { id } })
+    return NextResponse.json({ order: { id, ...('delivery_confirmation' in orderUpdate ? { delivery_confirmation: orderUpdate.delivery_confirmation } : {}) } })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Order update failed.' }, { status: 500 })
   }
