@@ -400,8 +400,8 @@ export default function AdminTemplatesPage() {
         </section> : null}
 
         {isAdmin ? <section className="card grid" style={{ boxShadow: 'none' }}>
-          <h2 style={{ margin: 0 }}>Salesperson Emails</h2>
-          <p className="muted" style={{ margin: 0 }}>Codes come in automatically from the Tour Totals import (the &quot;Recipient&quot; column). Enter each salesperson&apos;s email here.</p>
+          <h2 style={{ margin: 0 }}>Salespeople</h2>
+          <p className="muted" style={{ margin: 0 }}>Record each salesperson&apos;s <strong>code</strong>, <strong>name</strong> and <strong>email</strong>. Codes appear here automatically from imports (the Transforma sync&apos;s AREA code, e.g. &quot;SS&quot;, and the BCA Tour Totals &quot;Recipient&quot; column). The <strong>name</strong> you enter is what shows on the dashboard in place of the code; the <strong>email</strong> is used for the delivery notification and the dashboard&apos;s email button.</p>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
             <label style={{ flex: 1, minWidth: 180 }}>Add a code manually<input value={newSalesCode} onChange={(event) => setNewSalesCode(event.target.value)} placeholder="e.g. jesll" /></label>
             <button type="button" onClick={addSalesperson}>Add</button>
@@ -413,7 +413,7 @@ export default function AdminTemplatesPage() {
                 <td style={{ padding: 8, borderBottom: '1px solid var(--border)', fontWeight: 700 }}>{sp.code}</td>
                 <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}><input defaultValue={sp.name || ''} placeholder="Full name (optional)" onBlur={(event) => updateSalesperson(sp.id, { name: event.target.value })} /></td>
                 <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}><input type="email" defaultValue={sp.email || ''} placeholder="name@boconcept.com.au" onBlur={(event) => updateSalesperson(sp.id, { email: event.target.value })} /></td>
-              </tr>) : <tr><td colSpan={3} style={{ padding: 8 }} className="muted">No salesperson codes yet — they appear after your first Tour Totals import.</td></tr>}</tbody>
+              </tr>) : <tr><td colSpan={3} style={{ padding: 8 }} className="muted">No salesperson codes yet — they appear after your first import (Transforma sync or BCA Tour Totals), or add one manually above.</td></tr>}</tbody>
             </table>
           </div>
         </section> : null}

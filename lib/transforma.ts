@@ -53,6 +53,16 @@ function joinNonBlank(parts: unknown[], sep = ', '): string {
   return parts.map((p) => clean(p)).filter(Boolean).join(sep)
 }
 
+// Options data arrives ALL-CAPS (e.g. "MR MARK OREL", "12 SMITH ST"). Convert
+// such text to proper/title case for the dashboard. Strings that already carry
+// lowercase letters are left untouched (don't clobber intentional casing).
+function toProperCase(value: unknown): string {
+  const text = clean(value)
+  if (!text || /[a-z]/.test(text)) return text
+  return text.replace(/[A-Za-zÀ-ÿ]+/g, (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+}
+
+
 function parseDateText(value: unknown): Date | null {
   const text = clean(value)
   if (!text) return null
@@ -378,15 +388,16 @@ function mapOrderToImportRow(orderNo: string, lines: OptionsRecord[], header: Op
   const deliveryDate = earliestBookoutIso(lines)
   if (!deliveryDate) return null
 
-  // First non-excluded line supplies the product fields for the order.
-  const keptLine = lines.find((line) => {
+  // Every non-excluded line becomes a product line on the order (ZHEADING,
+  // ZDELIVERY, etc. are dropped). Keep all of them — an order can have many.
+  const keptLines = lines.filter((line) => {
     const sku = clean(line.STOCKCODE).toUpperCase()
     return sku && !EXCLUDED_TRANSFORMA_SKUS.has(sku)
   })
-  if (!keptLine) return null
+  if (!keptLines.length) return null
 
   const cod = calculateCodAmount(header, lines)
-  const recipientName = clean(header.DELNAME) || clean(header.CUSTNAME)
+  const recipientName = toProperCase(clean(header.DELNAME) || clean(header.CUSTNAME))
   if (!recipientName) return null
 
   const phone = firstNonBlank([
@@ -395,8 +406,11 @@ function mapOrderToImportRow(orderNo: string, lines: OptionsRecord[], header: Op
     extractPhoneFromText(header.CONTACT, header.DELNOTE, header.NOTES, header.SETUPNOTE, header.MAINTNOTE, header.IMESS)
   ])
 
-  const sku = clean(keptLine.STOCKCODE).toUpperCase()
-  const description = clean(keptLine.DESC) || clean(keptLine.MEMODESC) || clean(keptLine.OVERDESC) || sku
+  const items = keptLines.map((line) => {
+    const sku = clean(line.STOCKCODE).toUpperCase()
+    const description = toProperCase(clean(line.DESC) || clean(line.MEMODESC) || clean(line.OVERDESC) || sku)
+    return { product_code: sku, product_name: description, quantity: toInt(line.QTYORD) }
+  })
   const address = parseAuAddress([header.DEL1, header.DEL2, header.DEL3, header.DEL4])
 
   return {
@@ -405,11 +419,12 @@ function mapOrderToImportRow(orderNo: string, lines: OptionsRecord[], header: Op
     salesperson: clean(header.AREA),
     mobile: phone,
     balance_payable: cod,
-    product_code: sku,
-    product_name: description,
-    quantity: toInt(keptLine.QTYORD),
-    street_address: address.street_address,
-    suburb: address.suburb,
+    product_code: items[0].product_code,
+    product_name: items[0].product_name,
+    quantity: items[0].quantity,
+    items,
+    street_address: toProperCase(address.street_address),
+    suburb: toProperCase(address.suburb),
     state: address.state,
     postcode: address.postcode,
     delivery_date: deliveryDate
@@ -424,51 +439,6 @@ export type TransformaResult = {
 
 // Pull every order with a delivery booked on/after fromDate (default: today in
 // Adelaide) and fold each into a single ImportRow ready for ingestRows().
-// Self-discover the Options sales-area table and map AREA codes (e.g. "SS") to
-// the salesperson's name. Tries candidate tables/columns until one covers the
-// codes we need. Best-effort: returns an empty map if nothing matches.
-async function fetchAreaMap(codes: string[]): Promise<Map<string, string>> {
-  const result = new Map<string, string>()
-  const wanted = new Set(codes.map((c) => clean(c).toUpperCase()).filter(Boolean))
-  if (!wanted.size) return result
-  const clientKey = (process.env.OPTIONS_CLIENT_KEY || '').trim()
-  const tables = ['DRAREA', 'DRSAREA', 'DRSALES', 'DRSALE', 'DRREP', 'DRSREP', 'DRSMAN', 'DRSALESMAN', 'DRSALESAREA', 'GLREP', 'SALESAREA', 'DRSPER', 'DRSALESPERSON']
-  const codeCols = ['AREA', 'CODE', 'SALESMAN', 'REP', 'SALESPERSON']
-  const nameCols = ['NAME', 'DESCRIPTION', 'DESC', 'LONGNAME', 'FULLNAME', 'SHORTNAME']
-
-  for (const table of tables) {
-    let records: OptionsRecord[] = []
-    try {
-      const allXml = '<?xml version="1.0" encoding="utf-8"?>' + `<request clientKey="${escapeXml(clientKey)}"><table name="${escapeXml(table)}" sortBy="" maxRecords="1000" firstRecord="1" requestType=""><fields></fields><conditions></conditions></table></request>`
-      records = parseTableRecords(await postOptionsXml(allXml, 1), table)
-    } catch { /* fall through to fielded */ }
-    if (!records.length) {
-      try {
-        const xml = buildRequestXml(clientKey, table, [...codeCols, ...nameCols], [], { sortBy: '', maxRecords: 1000 })
-        records = parseTableRecords(await postOptionsXml(xml, 1), table)
-      } catch { continue }
-    }
-    if (!records.length) continue
-
-    const sample = records[0]
-    const codeCol = codeCols.find((c) => c in sample)
-    const nameCol = nameCols.find((c) => c in sample && records.some((r) => clean(r[c])))
-    if (!codeCol || !nameCol) continue
-
-    const built = new Map<string, string>()
-    for (const r of records) {
-      const code = clean(r[codeCol]).toUpperCase()
-      const name = clean(r[nameCol])
-      if (code && name && code !== name) built.set(code, name)
-    }
-    if (Array.from(wanted).some((c) => built.has(c))) {
-      Array.from(wanted).forEach((c) => { const n = built.get(c); if (n) result.set(c, n) })
-      return result
-    }
-  }
-  return result
-}
-
 export async function fetchTransformaRows(fromDate?: string): Promise<TransformaResult> {
   const from = clean(fromDate) || todayAdelaideIso()
 
@@ -499,18 +469,11 @@ export async function fetchTransformaRows(fromDate?: string): Promise<Transforma
     if (row) rows.push(row)
   }
 
-  // Resolve AREA codes to salesperson names (self-discovers the area table).
-  try {
-    const codes = Array.from(new Set(rows.map((r) => clean(r.salesperson)).filter(Boolean)))
-    const areaMap = await fetchAreaMap(codes)
-    if (areaMap.size) {
-      for (const r of rows) {
-        const name = areaMap.get(clean(r.salesperson).toUpperCase())
-        if (name) r.salesperson_name = name
-      }
-    }
-  } catch { /* name resolution is best-effort */ }
-
+  // Salesperson names are NOT derived here. Options has no salesperson-name
+  // table (the original integration uses the raw AREA code as the salesperson),
+  // so we store the AREA code on the order and let ingestRows register the code
+  // in the `salespeople` table. The real name + email are recorded once in the
+  // Admin → Salespeople table and the dashboard resolves code -> name from there.
   return { rows, orderCount: rows.length, fromDate: from }
 }
 

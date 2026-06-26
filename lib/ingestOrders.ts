@@ -15,6 +15,10 @@ export type ImportRow = {
   product_name?: string
   product_code?: string
   quantity?: number
+  // Full product-line list for the order (Transforma supplies every line). When
+  // present, all of these are created as order items; product_name/code/quantity
+  // above are just the first line for back-compat.
+  items?: Array<{ product_name?: string; product_code?: string; quantity?: number }>
   // Optional delivery address (Transforma supplies these from the Options API).
   street_address?: string
   suburb?: string
@@ -174,12 +178,17 @@ export async function ingestRows(
         .single()
       if (orderError || !order) throw new Error(orderError?.message || 'Could not create order.')
 
-      await supabaseAdmin.from('delivery_order_items').insert({
-        order_id: order.id,
-        product_name: row.product_name || `Balance payable ${balance.toFixed(2)}`,
-        product_code: row.product_code || '',
-        quantity: Number(row.quantity || 1)
-      })
+      const lineItems = (row.items && row.items.length)
+        ? row.items
+        : [{ product_name: row.product_name, product_code: row.product_code, quantity: row.quantity }]
+      await supabaseAdmin.from('delivery_order_items').insert(
+        lineItems.map((it) => ({
+          order_id: order.id,
+          product_name: it.product_name || `Balance payable ${balance.toFixed(2)}`,
+          product_code: it.product_code || '',
+          quantity: Number(it.quantity || 1)
+        }))
+      )
       created += 1
     }
   }
