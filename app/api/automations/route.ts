@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 
 const SELECT =
-  'id, is_active, sort_order, trigger_type, trigger_template_id, trigger_keyword, match_mode, action_set_status, action_set_light, action_set_ready, action_send_template_id'
+  'id, is_active, sort_order, trigger_type, trigger_template_id, trigger_keyword, trigger_status, match_mode, action_set_status, action_set_light, action_set_ready, action_send_template_id'
 
-const TRIGGERS = new Set(['template_sent', 'reply_keyword', 'reply_to_template', 'delivery_date_set', 'delivery_date_cleared'])
+const TRIGGERS = new Set(['template_sent', 'reply_keyword', 'reply_to_template', 'status_set', 'delivery_date_set', 'delivery_date_cleared'])
 const REPLY_TRIGGERS = new Set(['reply_keyword', 'reply_to_template'])
 const MATCH_MODES = new Set(['keyword', 'affirmative', 'negative', 'any'])
 const LIGHTS = new Set(['confirmed', 'awaiting', 'rejected', 'none'])
@@ -35,6 +35,7 @@ export async function POST(request: NextRequest) {
 
     const trigger_template_id = orNull(body.trigger_template_id)
     const trigger_keyword = orNull(body.trigger_keyword)
+    const trigger_status = orNull(body.trigger_status)
     const match_mode = MATCH_MODES.has(clean(body.match_mode)) ? clean(body.match_mode) : null
 
     if ((trigger_type === 'template_sent' || trigger_type === 'reply_to_template') && !trigger_template_id) {
@@ -42,6 +43,9 @@ export async function POST(request: NextRequest) {
     }
     if (trigger_type === 'reply_keyword' && !trigger_keyword) {
       return NextResponse.json({ error: 'Enter the keyword for this trigger.' }, { status: 400 })
+    }
+    if (trigger_type === 'status_set' && !trigger_status) {
+      return NextResponse.json({ error: 'Pick the status that triggers this rule.' }, { status: 400 })
     }
 
     const action_set_status = orNull(body.action_set_status)
@@ -63,6 +67,7 @@ export async function POST(request: NextRequest) {
         trigger_type,
         trigger_template_id: (trigger_type === 'template_sent' || trigger_type === 'reply_to_template') ? trigger_template_id : null,
         trigger_keyword: REPLY_TRIGGERS.has(trigger_type) ? trigger_keyword : null,
+        trigger_status: trigger_type === 'status_set' ? trigger_status : null,
         match_mode: REPLY_TRIGGERS.has(trigger_type) ? (match_mode || (trigger_keyword ? 'keyword' : 'any')) : null,
         action_set_status,
         action_set_light,
@@ -108,6 +113,7 @@ export async function PATCH(request: NextRequest) {
     if ('action_set_ready' in body) update.action_set_ready = READY.has(clean(body.action_set_ready)) ? clean(body.action_set_ready) : null
     if ('action_send_template_id' in body) update.action_send_template_id = orNull(body.action_send_template_id)
     if ('trigger_keyword' in body) update.trigger_keyword = orNull(body.trigger_keyword)
+    if ('trigger_status' in body) update.trigger_status = orNull(body.trigger_status)
     if ('match_mode' in body) update.match_mode = MATCH_MODES.has(clean(body.match_mode)) ? clean(body.match_mode) : null
     if ('trigger_template_id' in body) update.trigger_template_id = orNull(body.trigger_template_id)
 

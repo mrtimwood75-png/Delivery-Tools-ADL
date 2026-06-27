@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { sendEmail } from '@/lib/email'
-import { runSimpleTrigger } from '@/lib/automations'
+import { runSimpleTrigger, runStatusSet } from '@/lib/automations'
 
 type OrderLookupRow = {
   id: string
@@ -255,27 +255,10 @@ export async function PATCH(request: NextRequest) {
         orderUpdate.delivery_email_sent_at = null
       }
     }
-    // Manually setting the order to the configured delivery confirm/reject
-    // status also flips the delivery light — the reverse of the customer-reply
-    // automation. Skipped when the caller is explicitly setting the light too.
-    if ('order_status' in body && !('delivery_confirmation' in body)) {
-      const newStatus = String(body.order_status || '').trim()
-      if (newStatus) {
-        const { data: ds } = await supabaseAdmin
-          .from('app_settings')
-          .select('setting_key, setting_value')
-          .in('setting_key', ['delivery_confirmed_status', 'delivery_rejected_status'])
-        const map: Record<string, string> = {}
-        for (const row of ds || []) map[row.setting_key] = String(row.setting_value || '').trim()
-        if (map.delivery_confirmed_status && newStatus === map.delivery_confirmed_status) {
-          orderUpdate.delivery_confirmation = 'confirmed'
-          orderUpdate.delivery_confirmation_at = new Date().toISOString()
-        } else if (map.delivery_rejected_status && newStatus === map.delivery_rejected_status) {
-          orderUpdate.delivery_confirmation = 'rejected'
-          orderUpdate.delivery_confirmation_at = new Date().toISOString()
-        }
-      }
-    }
+    // "When status is set to X" automations fire after the update (handled below).
+    const statusChangedTo = ('order_status' in body && !('delivery_confirmation' in body))
+      ? String(body.order_status || '').trim()
+      : ''
 
     if ('archived_at' in body) orderUpdate.archived_at = body.archived_at
 
@@ -339,8 +322,14 @@ export async function PATCH(request: NextRequest) {
     // the dashboard reflects any status/light change without a reload.
     const echo: Record<string, unknown> = {}
     if ('delivery_confirmation' in orderUpdate) echo.delivery_confirmation = orderUpdate.delivery_confirmation
+    let ranAutomation = Boolean(deliveryTransition)
     if (deliveryTransition) {
       try { await runSimpleTrigger(id, deliveryTransition) } catch (e) { console.error('[automation] delivery-date trigger failed', id, e) }
+    }
+    if (statusChangedTo) {
+      try { const n = await runStatusSet(id, statusChangedTo); if (n) ranAutomation = true } catch (e) { console.error('[automation] status-set trigger failed', id, e) }
+    }
+    if (ranAutomation) {
       const { data: after } = await supabaseAdmin
         .from('delivery_orders')
         .select('order_status, delivery_confirmation, ready_status, archived_at')

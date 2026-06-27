@@ -19,9 +19,10 @@ export type AutomationRow = {
   id: string
   is_active: boolean
   sort_order: number
-  trigger_type: 'template_sent' | 'reply_keyword' | 'reply_to_template' | string
+  trigger_type: 'template_sent' | 'reply_keyword' | 'reply_to_template' | 'status_set' | 'delivery_date_set' | 'delivery_date_cleared' | string
   trigger_template_id: string | null
   trigger_keyword: string | null
+  trigger_status: string | null
   match_mode: string | null
   action_set_status: string | null
   action_set_light: string | null
@@ -30,7 +31,7 @@ export type AutomationRow = {
 }
 
 const AUTOMATION_SELECT =
-  'id, is_active, sort_order, trigger_type, trigger_template_id, trigger_keyword, match_mode, action_set_status, action_set_light, action_send_template_id, action_set_ready'
+  'id, is_active, sort_order, trigger_type, trigger_template_id, trigger_keyword, trigger_status, match_mode, action_set_status, action_set_light, action_send_template_id, action_set_ready'
 
 // First word of a reply, lowercased and stripped of punctuation.
 function firstWord(content: string): string {
@@ -111,6 +112,22 @@ export async function runSimpleTrigger(orderId: string, triggerType: string): Pr
     .select(AUTOMATION_SELECT)
     .eq('is_active', true)
     .eq('trigger_type', triggerType)
+    .order('sort_order', { ascending: true })
+  const rows = (data || []) as AutomationRow[]
+  for (const a of rows) await applyAutomationActions(orderId, a)
+  return rows.length
+}
+
+// Run all active "status set" automations whose target status matches the new
+// order status (used when an order's status is changed). Actions are additive.
+export async function runStatusSet(orderId: string, newStatus: string): Promise<number> {
+  if (!orderId || !newStatus) return 0
+  const { data } = await supabaseAdmin
+    .from('automations')
+    .select(AUTOMATION_SELECT)
+    .eq('is_active', true)
+    .eq('trigger_type', 'status_set')
+    .eq('trigger_status', newStatus)
     .order('sort_order', { ascending: true })
   const rows = (data || []) as AutomationRow[]
   for (const a of rows) await applyAutomationActions(orderId, a)

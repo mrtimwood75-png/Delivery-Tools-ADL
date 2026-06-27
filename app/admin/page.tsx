@@ -8,11 +8,11 @@ import { ASSIGNABLE_ROLES } from '@/lib/roles'
 type AppUser = { id: string; email: string; full_name: string | null; role: string; is_active: boolean; can_access_dashboard?: boolean; can_access_payments?: boolean }
 type Density = 'compact' | 'normal' | 'spacious'
 
-type Automation = { id: string; is_active: boolean; sort_order: number; trigger_type: string; trigger_template_id: string | null; trigger_keyword: string | null; match_mode: string | null; action_set_status: string | null; action_set_light: string | null; action_set_ready: string | null; action_send_template_id: string | null }
-type NewAutomation = { trigger_type: string; trigger_template_id: string; trigger_keyword: string; match_mode: string; action_set_status: string; action_set_light: string; action_set_ready: string; action_send_template_id: string }
-const emptyAuto: NewAutomation = { trigger_type: 'reply_to_template', trigger_template_id: '', trigger_keyword: '', match_mode: 'keyword', action_set_status: '', action_set_light: '', action_set_ready: '', action_send_template_id: '' }
+type Automation = { id: string; is_active: boolean; sort_order: number; trigger_type: string; trigger_template_id: string | null; trigger_keyword: string | null; trigger_status: string | null; match_mode: string | null; action_set_status: string | null; action_set_light: string | null; action_set_ready: string | null; action_send_template_id: string | null }
+type NewAutomation = { trigger_type: string; trigger_template_id: string; trigger_keyword: string; trigger_status: string; match_mode: string; action_set_status: string; action_set_light: string; action_set_ready: string; action_send_template_id: string }
+const emptyAuto: NewAutomation = { trigger_type: 'reply_to_template', trigger_template_id: '', trigger_keyword: '', trigger_status: '', match_mode: 'keyword', action_set_status: '', action_set_light: '', action_set_ready: '', action_send_template_id: '' }
 const lightLabel: Record<string, string> = { confirmed: '🟢 Confirmed', awaiting: '🟡 Awaiting', rejected: '🔴 Rejected', none: '⚪ Clear' }
-const triggerLabel: Record<string, string> = { template_sent: 'When this template is sent', reply_keyword: 'When a reply keyword matches', reply_to_template: 'When a customer replies to a template', delivery_date_set: 'When a delivery date is set', delivery_date_cleared: 'When a delivery date is cleared' }
+const triggerLabel: Record<string, string> = { template_sent: 'When this template is sent', reply_keyword: 'When a reply keyword matches', reply_to_template: 'When a customer replies to a template', status_set: 'When the status is changed to…', delivery_date_set: 'When a delivery date is set', delivery_date_cleared: 'When a delivery date is cleared' }
 const REPLY_TRIGGERS = ['reply_keyword', 'reply_to_template']
 const matchLabel: Record<string, string> = { keyword: 'starts with keyword', affirmative: 'says YES (yes/1/yeah…)', negative: 'says NO (no/2/nope…)', any: 'sends any reply' }
 
@@ -47,7 +47,6 @@ export default function AdminTemplatesPage() {
   const [newSalesBrand, setNewSalesBrand] = useState('transforma')
   const [deliveryEmail, setDeliveryEmail] = useState({ subject: '', body: '', enabled: false })
   const [testEmailTo, setTestEmailTo] = useState('')
-  const [deliveryConfirm, setDeliveryConfirm] = useState({ confirmed_status: '', rejected_status: '' })
   const [templateList, setTemplateList] = useState<{ id: string; name: string }[]>([])
   const [automations, setAutomations] = useState<Automation[]>([])
   const [newAuto, setNewAuto] = useState<NewAutomation>(emptyAuto)
@@ -61,7 +60,6 @@ export default function AdminTemplatesPage() {
     loadCustomerStatuses()
     loadSalespeople()
     loadDeliveryEmail()
-    loadDeliveryConfirm()
     loadAutomations()
     loadTemplateList()
     loadPaymentTemplates()
@@ -97,6 +95,7 @@ export default function AdminTemplatesPage() {
     const payload = { ...newAuto }
     if ((payload.trigger_type === 'template_sent' || payload.trigger_type === 'reply_to_template') && !payload.trigger_template_id) return setStatus('Pick the template for this trigger.')
     if (payload.trigger_type === 'reply_keyword' && !payload.trigger_keyword.trim()) return setStatus('Enter the keyword for this trigger.')
+    if (payload.trigger_type === 'status_set' && !payload.trigger_status.trim()) return setStatus('Pick the status that triggers this rule.')
     if (REPLY_TRIGGERS.includes(payload.trigger_type) && payload.match_mode === 'keyword' && !payload.trigger_keyword.trim()) return setStatus('Enter the keyword to match, or change the match type.')
     if (!payload.action_set_status && !payload.action_set_light && !payload.action_set_ready && !payload.action_send_template_id) return setStatus('Pick at least one action.')
     const response = await fetch('/api/automations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
@@ -129,6 +128,7 @@ export default function AdminTemplatesPage() {
   function templateName(id: string | null) { return templateList.find((t) => t.id === id)?.name || (id ? '(unknown template)' : '') }
   function automationWhen(a: Automation) {
     if (a.trigger_type === 'template_sent') return `When "${templateName(a.trigger_template_id)}" is sent`
+    if (a.trigger_type === 'status_set') return `When the status is changed to "${a.trigger_status || '—'}"`
     if (a.trigger_type === 'delivery_date_set') return 'When a delivery date is set'
     if (a.trigger_type === 'delivery_date_cleared') return 'When a delivery date is cleared'
     if (a.trigger_type === 'reply_to_template') return `When a customer replies to "${templateName(a.trigger_template_id)}" and ${matchLabel[a.match_mode || 'any']}${a.match_mode === 'keyword' && a.trigger_keyword ? ` "${a.trigger_keyword}"` : ''}`
@@ -205,21 +205,6 @@ export default function AdminTemplatesPage() {
     const result = await response.json()
     if (!response.ok) return setStatus(`Test email failed: ${result.error || 'unknown error'}`)
     setStatus(`Test email sent to ${result.sentTo}. Check the inbox.`)
-  }
-
-  async function loadDeliveryConfirm() {
-    const response = await fetch('/api/delivery-settings', { cache: 'no-store' })
-    const result = await response.json()
-    if (!response.ok) return
-    setDeliveryConfirm({ confirmed_status: result.confirmed_status || '', rejected_status: result.rejected_status || '' })
-  }
-
-  async function saveDeliveryConfirm() {
-    setStatus('Saving delivery confirmation settings...')
-    const response = await fetch('/api/delivery-settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(deliveryConfirm) })
-    const result = await response.json()
-    if (!response.ok) return setStatus(result.error || 'Save failed')
-    setStatus('Delivery confirmation settings saved.')
   }
 
   async function loadCustomerStatuses() {
@@ -344,25 +329,6 @@ export default function AdminTemplatesPage() {
           <button type="button" onClick={saveCustomerStatuses}>Save Customer Statuses</button>
         </section> : null}
 
-        {isAdmin ? <section className="card grid" style={{ boxShadow: 'none' }}>
-          <h2 style={{ margin: 0 }}>Delivery Confirmation (SMS reply tracking)</h2>
-          <p className="muted" style={{ margin: 0 }}>Tag an SMS template as a <strong>Delivery booking</strong> template on the Templates page. When a customer replies, the dashboard reads it: <strong>1 / yes</strong> sets the delivery light to 🟢 and the status below; <strong>2 / no</strong> sets it to 🔴 and the reject status. Anything unclear stays 🟡 and shows as an unread reply for a human.</p>
-          <div className="grid grid-2">
-            <label>Status when customer confirms
-              <select value={deliveryConfirm.confirmed_status} onChange={(event) => setDeliveryConfirm((d) => ({ ...d, confirmed_status: event.target.value }))}>
-                <option value="">— Leave status unchanged —</option>
-                {customerStatuses.split(/\r?\n/).map((item) => item.trim()).filter(Boolean).map((item) => <option key={item} value={item}>{item}</option>)}
-              </select>
-            </label>
-            <label>Status when customer rejects
-              <select value={deliveryConfirm.rejected_status} onChange={(event) => setDeliveryConfirm((d) => ({ ...d, rejected_status: event.target.value }))}>
-                <option value="">— Leave status unchanged —</option>
-                {customerStatuses.split(/\r?\n/).map((item) => item.trim()).filter(Boolean).map((item) => <option key={item} value={item}>{item}</option>)}
-              </select>
-            </label>
-          </div>
-          <button type="button" onClick={saveDeliveryConfirm}>Save Delivery Confirmation Settings</button>
-        </section> : null}
 
         {isAdmin ? <section className="card grid" style={{ boxShadow: 'none' }}>
           <h2 style={{ margin: 0 }}>Automations</h2>
@@ -377,6 +343,7 @@ export default function AdminTemplatesPage() {
               <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12, display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>
                 <label style={{ minWidth: 230 }}>Trigger<select value={newAuto.trigger_type} onChange={(e) => setNewAuto((a) => ({ ...a, trigger_type: e.target.value, match_mode: e.target.value === 'reply_keyword' ? 'keyword' : a.match_mode }))}>{Object.keys(triggerLabel).map((k) => <option key={k} value={k}>{triggerLabel[k]}</option>)}</select></label>
                 {(newAuto.trigger_type === 'template_sent' || newAuto.trigger_type === 'reply_to_template') ? <label style={{ minWidth: 200 }}>Template<select value={newAuto.trigger_template_id} onChange={(e) => setNewAuto((a) => ({ ...a, trigger_template_id: e.target.value }))}><option value="">— Choose template —</option>{templateList.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label> : null}
+                {newAuto.trigger_type === 'status_set' ? <label style={{ minWidth: 200 }}>When status becomes<select value={newAuto.trigger_status} onChange={(e) => setNewAuto((a) => ({ ...a, trigger_status: e.target.value }))}><option value="">— Choose status —</option>{statusOpts.map((s) => <option key={s} value={s}>{s}</option>)}</select></label> : null}
                 {isReply ? <label style={{ minWidth: 170 }}>Reply matches<select value={newAuto.match_mode} onChange={(e) => setNewAuto((a) => ({ ...a, match_mode: e.target.value }))}>{matchOpts.map((m) => <option key={m} value={m}>{matchLabel[m]}</option>)}</select></label> : null}
                 {isReply && newAuto.match_mode === 'keyword' ? <label style={{ minWidth: 140 }}>Keyword<input value={newAuto.trigger_keyword} onChange={(e) => setNewAuto((a) => ({ ...a, trigger_keyword: e.target.value }))} placeholder="e.g. DEBIT" /></label> : null}
                 <div style={{ flexBasis: '100%', height: 0 }} />
