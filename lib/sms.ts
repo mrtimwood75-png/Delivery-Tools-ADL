@@ -69,7 +69,7 @@ export async function sendMessageMediaSms(toMobile: string, message: string, bra
   const apiKey = cfg?.smsApiKey || process.env.MESSAGEMEDIA_API_KEY
   const apiSecret = cfg?.smsApiSecret || process.env.MESSAGEMEDIA_API_SECRET
   const senderId = (cfg?.smsFrom || process.env.MESSAGEMEDIA_SENDER_ID || '')
-  const baseUrl = (process.env.MESSAGEMEDIA_BASE_URL || 'https://api.messagemedia.com').replace(/\/$/, '')
+  const baseUrl = ((cfg?.smsBaseUrl || process.env.MESSAGEMEDIA_BASE_URL) || 'https://api.messagemedia.com').replace(/\/$/, '')
 
   if (!apiKey || !apiSecret) throw new Error('Missing MessageMedia credentials')
 
@@ -105,22 +105,22 @@ export async function sendMessageMediaSms(toMobile: string, message: string, bra
 // Asks MessageMedia for the current status of a sent message (delivered, enroute,
 // rejected, expired, etc.). Never throws — returns 'unknown' with an error string.
 export async function getMessageMediaStatus(messageId: string): Promise<{ status: string; content?: string; destination?: string; error?: string }> {
-  const baseUrl = (process.env.MESSAGEMEDIA_BASE_URL || 'https://api.messagemedia.com').replace(/\/$/, '')
+  const defaultBase = (process.env.MESSAGEMEDIA_BASE_URL || 'https://api.messagemedia.com').replace(/\/$/, '')
   // Try each configured account (a message id is only known to the account that
-  // sent it), de-duped by API key.
-  const creds: Array<{ apiKey: string; apiSecret: string }> = []
+  // sent it), de-duped by API key, each with its own base URL.
+  const creds: Array<{ apiKey: string; apiSecret: string; baseUrl: string }> = []
   const seen = new Set<string>()
   for (const brand of ['bca', 'transforma'] as Brand[]) {
     const cfg = brandConfig(brand)
     if (cfg.smsApiKey && cfg.smsApiSecret && !seen.has(cfg.smsApiKey)) {
       seen.add(cfg.smsApiKey)
-      creds.push({ apiKey: cfg.smsApiKey, apiSecret: cfg.smsApiSecret })
+      creds.push({ apiKey: cfg.smsApiKey, apiSecret: cfg.smsApiSecret, baseUrl: (cfg.smsBaseUrl || defaultBase).replace(/\/$/, '') })
     }
   }
   if (!creds.length) return { status: 'unknown', error: 'Missing MessageMedia credentials' }
 
   let lastError = ''
-  for (const { apiKey, apiSecret } of creds) {
+  for (const { apiKey, apiSecret, baseUrl } of creds) {
     const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64')
     try {
       const res = await fetch(`${baseUrl}/v1/messages/${encodeURIComponent(messageId)}`, {

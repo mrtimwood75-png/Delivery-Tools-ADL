@@ -14,6 +14,7 @@ export type BrandConfig = {
   smsFrom: string
   smsApiKey: string
   smsApiSecret: string
+  smsBaseUrl: string
   supportPhone: string
   warehousePhone: string
   supportEmail: string
@@ -49,6 +50,7 @@ export function brandConfig(brand: Brand): BrandConfig {
     smsFrom: env(`${p}_SMS_FROM`, 'MESSAGEMEDIA_SENDER_ID'),
     smsApiKey: env(`${p}_MESSAGEMEDIA_API_KEY`, 'MESSAGEMEDIA_API_KEY'),
     smsApiSecret: env(`${p}_MESSAGEMEDIA_API_SECRET`, 'MESSAGEMEDIA_API_SECRET'),
+    smsBaseUrl: env(`${p}_MESSAGEMEDIA_BASE_URL`, 'MESSAGEMEDIA_BASE_URL'),
     supportPhone: env(`${p}_SUPPORT_PHONE`, 'NEXT_PUBLIC_SUPPORT_PHONE'),
     warehousePhone: env(`${p}_WAREHOUSE_PHONE`, `${p}_SUPPORT_PHONE`, 'NEXT_PUBLIC_SUPPORT_PHONE'),
     supportEmail: env(`${p}_SUPPORT_EMAIL`, `${p}_EMAIL_FROM`, 'EMAIL_FROM'),
