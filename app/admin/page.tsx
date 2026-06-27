@@ -185,6 +185,15 @@ export default function AdminTemplatesPage() {
     setStatus('Salesperson added.')
   }
 
+  async function deleteSalesperson(id: string, code: string) {
+    if (!window.confirm(`Delete salesperson "${code}"? Orders keep the code but will show it without a name until re-added.`)) return
+    const response = await fetch('/api/salespeople', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) })
+    const result = await response.json().catch(() => ({}))
+    if (!response.ok) return setStatus(result.error || 'Could not delete salesperson')
+    await loadSalespeople()
+    setStatus(`Salesperson "${code}" deleted.`)
+  }
+
   async function loadDeliveryEmail() {
     const response = await fetch('/api/email-template', { cache: 'no-store' })
     const result = await response.json()
@@ -491,13 +500,14 @@ export default function AdminTemplatesPage() {
                 <h3 style={{ margin: '8px 0 6px', fontSize: 15 }}>{group.label} <span className="muted" style={{ fontWeight: 400 }}>({rows.length})</span></h3>
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead><tr>{['Code', 'Name', 'Email', 'Store'].map((heading) => <th key={heading} style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid var(--border)' }}>{heading}</th>)}</tr></thead>
+                    <thead><tr>{['Code', 'Name', 'Email', 'Store', ''].map((heading) => <th key={heading} style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid var(--border)' }}>{heading}</th>)}</tr></thead>
                     <tbody>{rows.length ? rows.map((sp) => <tr key={sp.id}>
                       <td style={{ padding: 8, borderBottom: '1px solid var(--border)', fontWeight: 700 }}>{sp.code}</td>
                       <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}><input defaultValue={sp.name || ''} placeholder="Full name (optional)" onBlur={(event) => updateSalesperson(sp.id, { name: event.target.value })} /></td>
                       <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}><input type="email" defaultValue={sp.email || ''} placeholder="name@boconcept.com.au" onBlur={(event) => updateSalesperson(sp.id, { email: event.target.value })} /></td>
                       <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}><select value={sp.brand || ''} onChange={(event) => updateSalesperson(sp.id, { brand: event.target.value || null })}><option value="">— Unassigned —</option><option value="transforma">Transforma</option><option value="bca">BoConcept Adelaide</option></select></td>
-                    </tr>) : <tr><td colSpan={4} style={{ padding: 8 }} className="muted">None yet.</td></tr>}</tbody>
+                      <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}><button type="button" className="btn-danger" onClick={() => deleteSalesperson(sp.id, sp.code)}>Delete</button></td>
+                    </tr>) : <tr><td colSpan={5} style={{ padding: 8 }} className="muted">None yet.</td></tr>}</tbody>
                   </table>
                 </div>
               </div>

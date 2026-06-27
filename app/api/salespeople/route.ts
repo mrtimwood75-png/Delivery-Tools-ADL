@@ -59,3 +59,18 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Update failed.' }, { status: 500 })
   }
 }
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const id = String(body.id || '')
+    if (!id) return NextResponse.json({ error: 'Missing id.' }, { status: 400 })
+    // Orders store the salesperson code as text (not a foreign key), so removing
+    // a salespeople row just clears its name/email mapping — orders keep working.
+    const { error } = await supabaseAdmin.from('salespeople').delete().eq('id', id)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ ok: true })
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Delete failed.' }, { status: 500 })
+  }
+}
