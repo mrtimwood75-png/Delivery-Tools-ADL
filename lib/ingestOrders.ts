@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { lookupSuburb } from '@/lib/postcode'
+import { stripCustomerTitle } from '@/lib/text'
 
 // A single normalized order row, source-agnostic. Both the BCA packing-list
 // import and the Transforma Options-API sync hand rows in this shape to
@@ -48,7 +49,7 @@ function cleanRows(rows: ImportRow[]) {
   const map = new Map<string, ImportRow & { order_number: string; customer_name: string }>()
   for (const row of rows) {
     const orderNumber = String(row.order_number || '').trim().toUpperCase()
-    const customerName = String(row.customer_name || '').trim()
+    const customerName = stripCustomerTitle(String(row.customer_name || '').trim())
     if (!orderNumber || !customerName) continue
     map.set(orderNumber, { ...row, order_number: orderNumber, customer_name: customerName })
   }
