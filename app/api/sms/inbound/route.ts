@@ -9,10 +9,20 @@ import { runReplyAutomations } from '@/lib/automations'
 
 type AnyRecord = Record<string, unknown>
 
+// A webhook value that is just an un-substituted template variable, e.g.
+// "$moContent" or "$moContent,$mtContent" (happens when a field doesn't apply to
+// the event that fired, like delivery reports having no inbound content).
+function isUnresolvedToken(v: string): boolean {
+  return v.split(',').every((part) => /^\$[A-Za-z][\w.]*$/.test(part.trim()))
+}
+
 function pick(obj: AnyRecord, keys: string[]): string {
   for (const key of keys) {
     const value = obj[key]
-    if (value !== undefined && value !== null && String(value).trim() !== '') return String(value).trim()
+    if (value === undefined || value === null) continue
+    const s = String(value).trim()
+    if (s === '' || isUnresolvedToken(s)) continue
+    return s
   }
   return ''
 }
@@ -70,10 +80,26 @@ async function findCustomer(normalizedPhone: string, originalMessageId: string):
 async function handleReply(reply: AnyRecord) {
   const content = pick(reply, ['content', 'message', 'body', 'text'])
   const source = pick(reply, ['source_number', 'source', 'from', 'originator', 'sender', 'mobile'])
-  if (!content && !source) return false
+  // A real customer reply always has message text. Events with no content
+  // (e.g. delivery reports, or fields that didn't resolve) are not replies.
+  if (!content) return false
+  if (!source) return false
 
   const originalMessageId = pick(reply, ['message_id', 'in_reply_to', 'original_message_id'])
   const providerId = pick(reply, ['reply_id', 'id']) || originalMessageId || null
+
+  // Drop exact duplicates (same provider message id already stored) so a webhook
+  // delivered twice doesn't double-fire automations.
+  if (providerId) {
+    const { data: dupe } = await supabaseAdmin
+      .from('sms_messages')
+      .select('id')
+      .eq('direction', 'inbound')
+      .eq('provider_message_id', providerId)
+      .limit(1)
+      .maybeSingle()
+    if (dupe) return false
+  }
   const normalizedPhone = normalizeMobileAu(source)
   const dateRaw = pick(reply, ['date_received', 'timestamp', 'received_timestamp', 'date'])
   const date = dateRaw && !Number.isNaN(new Date(dateRaw).getTime()) ? new Date(dateRaw).toISOString() : new Date().toISOString()
