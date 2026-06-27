@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { retrieveCheckoutSession } from '@/lib/stripe'
-import { brandConfig } from '@/lib/brand'
+import { getMerchantConfig } from '@/lib/merchant'
 
 // Public lookup for the customer-facing success page. Given a Checkout session
 // id (which only the person who paid has), returns a small summary so the page
@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Not found.' }, { status: 404 })
     }
     const { session, brand } = found
-    const cfg = brandConfig(brand)
+    const cfg = await getMerchantConfig(brand)
     return NextResponse.json({
       paid: session.payment_status === 'paid',
       amount: Number(session.amount_total || 0) / 100,
@@ -30,9 +30,9 @@ export async function GET(request: NextRequest) {
         brand,
         name: cfg.displayName,
         logo: cfg.logo,
-        phone: cfg.supportPhone,
-        email: cfg.supportEmail,
-        address: cfg.supportAddress
+        phone: cfg.showroomPhone,
+        email: cfg.email,
+        address: cfg.address
       }
     })
   } catch {

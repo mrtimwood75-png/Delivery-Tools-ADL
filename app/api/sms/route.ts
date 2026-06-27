@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { normalizeMobileAu } from '@/lib/format'
 import { buildMessage, sendMessageMediaSms, SMS_ORDER_SELECT, type OrderRow } from '@/lib/sms'
 import { brandForSource } from '@/lib/brand'
+import { getAllMerchantConfigs } from '@/lib/merchant'
 import { runTemplateSent } from '@/lib/automations'
 
 function templateAudienceMatches(balance: number, audience: string) {
@@ -61,6 +62,7 @@ export async function POST(request: NextRequest) {
     type LogRow = { customer_id: string | null; order_id: string; direction: string; phone: string; body: string; status: string; provider_message_id: string | null; template_id: string | null; sent_by: string | null; error: string | null; purpose: string | null }
     const logRows: LogRow[] = []
     const sentOrderIds: string[] = []
+    const merchants = await getAllMerchantConfigs()
 
     for (const order of (data || []) as OrderRow[]) {
       const customer = Array.isArray(order.customers) ? order.customers[0] : order.customers
@@ -79,7 +81,7 @@ export async function POST(request: NextRequest) {
         continue
       }
 
-      const message = buildMessage(order, templateText)
+      const message = buildMessage(order, templateText, merchants[brandForSource(order.source)])
       try {
         const messageId = await sendMessageMediaSms(mobile, message, brandForSource(order.source))
         const orderUpdate: Record<string, unknown> = { sms_status: `Sent (${messageId})`, date_sent: new Date().toISOString() }

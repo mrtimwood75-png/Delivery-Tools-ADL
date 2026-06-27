@@ -197,15 +197,15 @@ export default function PaymentLinkPage() {
                 {showManage ? 'Close' : 'Manage salespeople'}
               </button>
             </div>
-            {salespeople.length > 0 && (
+            {salespeople.some((s) => (s.name || '').trim()) && (
               <select
                 style={{ ...input, marginBottom: 8 }}
                 value={salespersonId}
                 onChange={(e) => pickSalesperson(e.target.value)}
               >
                 <option value="">— Choose salesperson —</option>
-                {salespeople.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name || s.code}{s.email ? ` (${s.email})` : ''}</option>
+                {salespeople.filter((s) => (s.name || '').trim()).map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}{s.email ? ` (${s.email})` : ''}</option>
                 ))}
               </select>
             )}

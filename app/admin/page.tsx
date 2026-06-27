@@ -45,6 +45,8 @@ export default function AdminTemplatesPage() {
   const [salespeople, setSalespeople] = useState<{ id: string; code: string; name: string | null; email: string | null; brand: string | null }[]>([])
   const [newSalesCode, setNewSalesCode] = useState('')
   const [newSalesBrand, setNewSalesBrand] = useState('transforma')
+  const [merchant, setMerchant] = useState<Record<string, Record<string, string>>>({ bca: {}, transforma: {} })
+  const [savingMerchant, setSavingMerchant] = useState('')
   const [deliveryEmail, setDeliveryEmail] = useState({ subject: '', body: '', enabled: false })
   const [testEmailTo, setTestEmailTo] = useState('')
   const [templateList, setTemplateList] = useState<{ id: string; name: string }[]>([])
@@ -61,6 +63,7 @@ export default function AdminTemplatesPage() {
     loadUsers()
     loadCustomerStatuses()
     loadSalespeople()
+    loadMerchant()
     loadDeliveryEmail()
     loadAutomations()
     loadTemplateList()
@@ -183,6 +186,25 @@ export default function AdminTemplatesPage() {
     setNewSalesCode('')
     await loadSalespeople()
     setStatus('Salesperson added.')
+  }
+
+  async function loadMerchant() {
+    const response = await fetch('/api/merchant-settings', { cache: 'no-store' })
+    const result = await response.json()
+    if (response.ok && result.settings) setMerchant({ bca: result.settings.bca || {}, transforma: result.settings.transforma || {} })
+  }
+
+  function setMerchantField(brand: string, field: string, value: string) {
+    setMerchant((m) => ({ ...m, [brand]: { ...m[brand], [field]: value } }))
+  }
+
+  async function saveMerchant(brand: string) {
+    setSavingMerchant(brand)
+    const response = await fetch('/api/merchant-settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ brand, ...merchant[brand] }) })
+    const result = await response.json().catch(() => ({}))
+    setSavingMerchant('')
+    if (!response.ok) return setStatus(result.error || 'Could not save merchant details')
+    setStatus(`${brand === 'transforma' ? 'Transforma' : 'BoConcept Adelaide'} merchant details saved.`)
   }
 
   async function deleteSalesperson(id: string, code: string) {
@@ -513,6 +535,37 @@ export default function AdminTemplatesPage() {
               </div>
             )
           })}
+        </section> : null}
+
+        {isAdmin ? <section className="card grid" style={{ boxShadow: 'none' }}>
+          <h2 style={{ margin: 0 }}>Merchant details</h2>
+          <p className="muted" style={{ margin: 0 }}>Customer-facing details for each brand, used in SMS templates (the <code>{'{merchant_*}'}</code> fields) and the payment success page. Leave a field blank to use the deployment&apos;s configured default. <strong>These are not secrets</strong> — Stripe/SMS keys still live in the hosting environment.</p>
+          <div className="grid grid-2">
+            {([{ key: 'bca', label: 'BoConcept Adelaide' }, { key: 'transforma', label: 'Transforma' }] as { key: string; label: string }[]).map((b) => {
+              const m = merchant[b.key] || {}
+              const fields: { f: string; label: string; ph?: string }[] = [
+                { f: 'display_name', label: 'Display name (merchant)', ph: b.label },
+                { f: 'showroom_phone', label: 'Showroom phone' },
+                { f: 'warehouse_phone', label: 'Warehouse phone' },
+                { f: 'email', label: 'Email' },
+                { f: 'address', label: 'Address' },
+                { f: 'bank_name', label: 'Bank name' },
+                { f: 'bank_bsb', label: 'Bank BSB' },
+                { f: 'bank_account', label: 'Bank account' }
+              ]
+              return (
+                <div key={b.key} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12, display: 'grid', gap: 8 }}>
+                  <h3 style={{ margin: '0 0 4px', fontSize: 15 }}>{b.label}</h3>
+                  {fields.map((row) => (
+                    <label key={row.f} style={{ display: 'grid', gap: 3, fontSize: 12.5, color: '#6b6b6b' }}>{row.label}
+                      <input value={m[row.f] || ''} placeholder={row.ph || ''} onChange={(e) => setMerchantField(b.key, row.f, e.target.value)} style={{ fontSize: 14, color: 'var(--foreground)' }} />
+                    </label>
+                  ))}
+                  <button type="button" onClick={() => saveMerchant(b.key)} disabled={savingMerchant === b.key}>{savingMerchant === b.key ? 'Saving…' : `Save ${b.label}`}</button>
+                </div>
+              )
+            })}
+          </div>
         </section> : null}
 
         {isAdmin ? <section className="card grid" style={{ boxShadow: 'none' }}>

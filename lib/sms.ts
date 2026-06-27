@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { formatAmountAu, normalizeMobileAu } from '@/lib/format'
 import { brandConfig, brandForSource, type Brand } from '@/lib/brand'
+import { getMerchantConfig } from '@/lib/merchant'
 
 export type SmsCustomer = { name: string; phone: string | null; address: string | null; street_address: string | null; suburb: string | null; state: string | null; postcode: string | null }
 export type OrderRow = {
@@ -29,20 +30,26 @@ function formatDateAu(value: string | null | undefined) {
   return date.toLocaleDateString('en-AU')
 }
 
-export function buildMessage(order: OrderRow, templateText: string) {
+// `merchant` lets callers pass DB-resolved details (Admin > Merchant details).
+// When omitted, the brand's env config is used.
+export type MerchantFields = { displayName: string; showroomPhone: string; warehousePhone: string; email: string; address: string; bankName: string; bankBsb: string; bankAccount: string }
+
+export function buildMessage(order: OrderRow, templateText: string, merchant?: MerchantFields) {
   const customer = Array.isArray(order.customers) ? order.customers[0] : order.customers
   const street = customer?.street_address || customer?.address || ''
   const fullAddress = [street, customer?.suburb, customer?.state, customer?.postcode].map((part) => String(part || '').trim()).filter(Boolean).join(' ')
-  const cfg = brandConfig(brandForSource(order.source))
+  const env = brandConfig(brandForSource(order.source))
+  const m: MerchantFields = merchant || { displayName: env.displayName, showroomPhone: env.showroomPhone, warehousePhone: env.warehousePhone, email: env.supportEmail, address: env.supportAddress, bankName: env.bankName, bankBsb: env.bankBsb, bankAccount: env.bankAccount }
   return templateText
-    .replaceAll('{merchant}', cfg.displayName)
-    .replaceAll('{merchant_phone}', cfg.supportPhone)
-    .replaceAll('{merchant_warehouse_phone}', cfg.warehousePhone)
-    .replaceAll('{merchant_email}', cfg.supportEmail)
-    .replaceAll('{merchant_address}', cfg.supportAddress)
-    .replaceAll('{merchant_bank}', cfg.bankName)
-    .replaceAll('{merchant_bsb}', cfg.bankBsb)
-    .replaceAll('{merchant_account}', cfg.bankAccount)
+    .replaceAll('{merchant}', m.displayName)
+    .replaceAll('{merchant_showroom_phone}', m.showroomPhone)
+    .replaceAll('{merchant_phone}', m.showroomPhone)
+    .replaceAll('{merchant_warehouse_phone}', m.warehousePhone)
+    .replaceAll('{merchant_email}', m.email)
+    .replaceAll('{merchant_address}', m.address)
+    .replaceAll('{merchant_bank}', m.bankName)
+    .replaceAll('{merchant_bsb}', m.bankBsb)
+    .replaceAll('{merchant_account}', m.bankAccount)
     .replaceAll('{customer_name}', customer?.name || '')
     .replaceAll('{order_number}', order.order_number || '')
     .replaceAll('{salesperson}', order.salesperson || '')
@@ -150,10 +157,12 @@ export async function sendOrderTemplate(orderId: string, tpl: { id: string; temp
   const mobile = String(customer?.phone || '').trim()
   if (!mobile) return { ok: false, reason: 'customer has no mobile number' }
 
-  const message = buildMessage(order as unknown as OrderRow, tpl.template_text)
-  const base = { customer_id: order.customer_id, order_id: order.id, direction: 'outbound', phone: normalizeMobileAu(mobile), body: message, template_id: tpl.id, purpose }
-  // Send through the MessageMedia account of the brand the customer bought from.
+  // Send through the MessageMedia account of the brand the customer bought from,
+  // and render merchant fields from that brand's (DB-overridable) details.
   const brand = brandForSource((order as { source?: string | null }).source)
+  const merchant = await getMerchantConfig(brand)
+  const message = buildMessage(order as unknown as OrderRow, tpl.template_text, merchant)
+  const base = { customer_id: order.customer_id, order_id: order.id, direction: 'outbound', phone: normalizeMobileAu(mobile), body: message, template_id: tpl.id, purpose }
   try {
     const messageId = await sendMessageMediaSms(mobile, message, brand)
     await supabaseAdmin.from('sms_messages').insert({ ...base, status: 'sent', provider_message_id: messageId })
