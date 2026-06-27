@@ -37,6 +37,7 @@ export function buildMessage(order: OrderRow, templateText: string) {
   return templateText
     .replaceAll('{merchant}', cfg.displayName)
     .replaceAll('{merchant_phone}', cfg.supportPhone)
+    .replaceAll('{merchant_warehouse_phone}', cfg.warehousePhone)
     .replaceAll('{merchant_email}', cfg.supportEmail)
     .replaceAll('{merchant_address}', cfg.supportAddress)
     .replaceAll('{merchant_bank}', cfg.bankName)
