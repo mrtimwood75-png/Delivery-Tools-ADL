@@ -43,14 +43,12 @@ export function formatAmountAu(value: number) {
 }
 
 export function normalizeMobileAu(mobile: string) {
-  let cleaned = String(mobile || '').trim()
-  cleaned = Array.from(cleaned)
-    .filter((ch) => /[0-9+]/.test(ch))
-    .join('')
-
-  if (!cleaned) return ''
-  if (cleaned.startsWith('+61')) return cleaned
-  if (cleaned.startsWith('61')) return `+${cleaned}`
-  if (cleaned.startsWith('04') && cleaned.length >= 10) return `+61${cleaned.slice(1)}`
-  return cleaned
+  // Work from digits only (drops +, spaces, and stray leading-+ artefacts like
+  // "+0402..." which Sinch rejects as an invalid destination).
+  const d = String(mobile || '').replace(/\D/g, '')
+  if (!d) return ''
+  if (d.startsWith('61')) return `+${d}`                     // 61.../+61... -> +61...
+  if (d.startsWith('0')) return `+61${d.slice(1)}`           // 0402... or +0402... -> +61402...
+  if (d.length === 9 && d.startsWith('4')) return `+61${d}`  // 402880663 -> +61402880663
+  return `+${d}`
 }
