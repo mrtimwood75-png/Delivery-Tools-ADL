@@ -17,6 +17,9 @@ export type BrandConfig = {
   supportPhone: string
   supportEmail: string
   supportAddress: string
+  bankName: string
+  bankBsb: string
+  bankAccount: string
   stripeSecretKey: string
   stripeWebhookSecret: string
 }
@@ -48,6 +51,9 @@ export function brandConfig(brand: Brand): BrandConfig {
     supportPhone: env(`${p}_SUPPORT_PHONE`, 'NEXT_PUBLIC_SUPPORT_PHONE'),
     supportEmail: env(`${p}_SUPPORT_EMAIL`, `${p}_EMAIL_FROM`, 'EMAIL_FROM'),
     supportAddress: env(`${p}_SUPPORT_ADDRESS`, 'NEXT_PUBLIC_SUPPORT_ADDRESS'),
+    bankName: env(`${p}_BANK_NAME`),
+    bankBsb: env(`${p}_BANK_BSB`),
+    bankAccount: env(`${p}_BANK_ACCOUNT`),
     stripeSecretKey: env(`${p}_STRIPE_SECRET_KEY`, 'STRIPE_SECRET_KEY'),
     stripeWebhookSecret: env(`${p}_STRIPE_WEBHOOK_SECRET`, 'STRIPE_WEBHOOK_SECRET')
   }
