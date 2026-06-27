@@ -8,9 +8,9 @@ import { ASSIGNABLE_ROLES } from '@/lib/roles'
 type AppUser = { id: string; email: string; full_name: string | null; role: string; is_active: boolean; can_access_dashboard?: boolean; can_access_payments?: boolean }
 type Density = 'compact' | 'normal' | 'spacious'
 
-type Automation = { id: string; is_active: boolean; sort_order: number; trigger_type: string; trigger_template_id: string | null; trigger_keyword: string | null; trigger_status: string | null; match_mode: string | null; action_set_status: string | null; action_set_light: string | null; action_set_ready: string | null; action_send_template_id: string | null }
-type NewAutomation = { trigger_type: string; trigger_template_id: string; trigger_keyword: string; trigger_status: string; match_mode: string; action_set_status: string; action_set_light: string; action_set_ready: string; action_send_template_id: string }
-const emptyAuto: NewAutomation = { trigger_type: 'reply_to_template', trigger_template_id: '', trigger_keyword: '', trigger_status: '', match_mode: 'keyword', action_set_status: '', action_set_light: '', action_set_ready: '', action_send_template_id: '' }
+type Automation = { id: string; is_active: boolean; sort_order: number; trigger_type: string; trigger_template_id: string | null; trigger_keyword: string | null; trigger_status: string | null; match_mode: string | null; action_set_status: string | null; action_set_light: string | null; action_set_ready: string | null; action_regenerate_link: boolean | null; action_send_template_id: string | null }
+type NewAutomation = { trigger_type: string; trigger_template_id: string; trigger_keyword: string; trigger_status: string; match_mode: string; action_set_status: string; action_set_light: string; action_set_ready: string; action_regenerate_link: boolean; action_send_template_id: string }
+const emptyAuto: NewAutomation = { trigger_type: 'reply_to_template', trigger_template_id: '', trigger_keyword: '', trigger_status: '', match_mode: 'keyword', action_set_status: '', action_set_light: '', action_set_ready: '', action_regenerate_link: false, action_send_template_id: '' }
 const lightLabel: Record<string, string> = { confirmed: '🟢 Confirmed', awaiting: '🟡 Awaiting', rejected: '🔴 Rejected', none: '⚪ Clear' }
 const triggerLabel: Record<string, string> = { template_sent: 'When this template is sent', reply_keyword: 'When a reply keyword matches', reply_to_template: 'When a customer replies to a template', status_set: 'When the status is changed to…', delivery_date_set: 'When a delivery date is set', delivery_date_cleared: 'When a delivery date is cleared', payment_received: 'When a payment is received (Stripe)' }
 const REPLY_TRIGGERS = ['reply_keyword', 'reply_to_template']
@@ -102,7 +102,7 @@ export default function AdminTemplatesPage() {
     if (payload.trigger_type === 'reply_keyword' && !payload.trigger_keyword.trim()) return setStatus('Enter the keyword for this trigger.')
     if (payload.trigger_type === 'status_set' && !payload.trigger_status.trim()) return setStatus('Pick the status that triggers this rule.')
     if (REPLY_TRIGGERS.includes(payload.trigger_type) && payload.match_mode === 'keyword' && !payload.trigger_keyword.trim()) return setStatus('Enter the keyword to match, or change the match type.')
-    if (!payload.action_set_status && !payload.action_set_light && !payload.action_set_ready && !payload.action_send_template_id) return setStatus('Pick at least one action.')
+    if (!payload.action_set_status && !payload.action_set_light && !payload.action_set_ready && !payload.action_regenerate_link && !payload.action_send_template_id) return setStatus('Pick at least one action.')
     const response = await fetch('/api/automations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
     const result = await response.json()
     if (!response.ok) return setStatus(result.error || 'Could not add automation')
@@ -145,6 +145,7 @@ export default function AdminTemplatesPage() {
     if (a.action_set_status) acts.push(`status → ${a.action_set_status}`)
     if (a.action_set_light) acts.push(`light → ${lightLabel[a.action_set_light] || a.action_set_light}`)
     if (a.action_set_ready) acts.push(`prep → ${a.action_set_ready}`)
+    if (a.action_regenerate_link) acts.push('regenerate Stripe link')
     if (a.action_send_template_id) acts.push(`send "${templateName(a.action_send_template_id)}"`)
     return acts.length ? acts.join(', ') : '(no actions)'
   }
@@ -337,7 +338,7 @@ export default function AdminTemplatesPage() {
 
   function startEditAuto(a: Automation) {
     setEditingAutoId(a.id)
-    setEditAuto({ trigger_type: a.trigger_type, trigger_template_id: a.trigger_template_id || '', trigger_keyword: a.trigger_keyword || '', trigger_status: a.trigger_status || '', match_mode: a.match_mode || 'keyword', action_set_status: a.action_set_status || '', action_set_light: a.action_set_light || '', action_set_ready: a.action_set_ready || '', action_send_template_id: a.action_send_template_id || '' })
+    setEditAuto({ trigger_type: a.trigger_type, trigger_template_id: a.trigger_template_id || '', trigger_keyword: a.trigger_keyword || '', trigger_status: a.trigger_status || '', match_mode: a.match_mode || 'keyword', action_set_status: a.action_set_status || '', action_set_light: a.action_set_light || '', action_set_ready: a.action_set_ready || '', action_regenerate_link: Boolean(a.action_regenerate_link), action_send_template_id: a.action_send_template_id || '' })
   }
   function validateAuto(p: NewAutomation): string {
     if ((p.trigger_type === 'template_sent' || p.trigger_type === 'reply_to_template') && !p.trigger_template_id) return 'Pick the template for this trigger.'
@@ -348,7 +349,7 @@ export default function AdminTemplatesPage() {
     return ''
   }
   function autoPatch(p: NewAutomation): Record<string, unknown> {
-    const patch: Record<string, unknown> = { action_set_status: p.action_set_status || null, action_set_light: p.action_set_light || null, action_set_ready: p.action_set_ready || null, action_send_template_id: p.action_send_template_id || null }
+    const patch: Record<string, unknown> = { action_set_status: p.action_set_status || null, action_set_light: p.action_set_light || null, action_set_ready: p.action_set_ready || null, action_regenerate_link: p.action_regenerate_link, action_send_template_id: p.action_send_template_id || null }
     if (p.trigger_type === 'template_sent' || p.trigger_type === 'reply_to_template') patch.trigger_template_id = p.trigger_template_id || null
     if (REPLY_TRIGGERS.includes(p.trigger_type)) { patch.trigger_keyword = p.trigger_keyword || null; patch.match_mode = p.match_mode }
     if (p.trigger_type === 'status_set') patch.trigger_status = p.trigger_status || null
@@ -375,6 +376,7 @@ export default function AdminTemplatesPage() {
     <label style={{ minWidth: 180 }}>Set status<select value={draft.action_set_status} onChange={(e) => set({ ...draft, action_set_status: e.target.value })}><option value="">— No change —</option>{statusOpts.map((s) => <option key={s} value={s}>{s}</option>)}</select></label>
     <label style={{ minWidth: 150 }}>Set light<select value={draft.action_set_light} onChange={(e) => set({ ...draft, action_set_light: e.target.value })}><option value="">— No change —</option>{Object.keys(lightLabel).map((k) => <option key={k} value={k}>{lightLabel[k]}</option>)}</select></label>
     <label style={{ minWidth: 150 }}>Set prep<select value={draft.action_set_ready} onChange={(e) => set({ ...draft, action_set_ready: e.target.value })}><option value="">— No change —</option><option value="Ready">Ready</option><option value="Not Ready">Not Ready</option></select></label>
+    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, minWidth: 170 }}><input type="checkbox" checked={draft.action_regenerate_link} onChange={(e) => set({ ...draft, action_regenerate_link: e.target.checked })} style={{ width: 'auto' }} />Regenerate Stripe link</label>
     <label style={{ minWidth: 200 }}>Send template<select value={draft.action_send_template_id} onChange={(e) => set({ ...draft, action_send_template_id: e.target.value })}><option value="">— None —</option>{templateList.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
   </>
 

@@ -1,21 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
-import { stripeForBrand } from '@/lib/stripe'
-import { brandForSource } from '@/lib/brand'
+import { createOrderCheckoutLink } from '@/lib/stripeLinks'
 
 type StripeOrderRow = {
   id: string
-  order_number: string
   payment_due: number
-  source: string | null
   stripe_link: string | null
   stripe_link_amount: number | null
   stripe_link_expires_at: string | null
-  customers: { name: string | null; phone: string | null } | { name: string | null; phone: string | null }[] | null
 }
-
-// Stripe Checkout Sessions can live at most 24h; expire ~1 min early to be safe.
-const LINK_TTL_SECONDS = 24 * 60 * 60 - 60
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,7 +19,7 @@ export async function POST(request: NextRequest) {
 
     let query = supabaseAdmin
       .from('delivery_orders')
-      .select('id, order_number, payment_due, source, stripe_link, stripe_link_amount, stripe_link_expires_at, customers(name, phone)')
+      .select('id, payment_due, stripe_link, stripe_link_amount, stripe_link_expires_at')
       .gt('payment_due', 0)
 
     if (orderIds.length) query = query.in('id', orderIds)
@@ -51,50 +44,8 @@ export async function POST(request: NextRequest) {
         continue
       }
 
-      const expiresEpoch = Math.floor(Date.now() / 1000) + LINK_TTL_SECONDS
-
-      const customer = Array.isArray(order.customers) ? order.customers[0] : order.customers
-      const customerName = customer?.name || 'Customer'
-
-      // Mint the link in the Stripe account of the brand that owns this order.
-      const stripe = stripeForBrand(brandForSource(order.source))
-
-      const session = await stripe.checkout.sessions.create({
-        mode: 'payment',
-        client_reference_id: order.order_number,
-        expires_at: expiresEpoch,
-        line_items: [{
-          price_data: {
-            currency: 'aud',
-            product_data: {
-              name: `Order ${order.order_number}`,
-              description: `Balance payment for ${customerName}`
-            },
-            unit_amount: Math.round(amount * 100)
-          },
-          quantity: 1
-        }],
-        success_url: `${origin}/pay/success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: process.env.STRIPE_CANCEL_URL || 'https://boconcept.com.au',
-        metadata: {
-          kind: 'order_balance',
-          customer_name: customerName,
-          order_number: order.order_number,
-          balance_payable: String(amount)
-        }
-      })
-
-      const { error: updateError } = await supabaseAdmin
-        .from('delivery_orders')
-        .update({
-          stripe_session_id: session.id,
-          stripe_link: session.url,
-          stripe_link_amount: amount,
-          stripe_link_expires_at: new Date(expiresEpoch * 1000).toISOString()
-        })
-        .eq('id', order.id)
-
-      if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 })
+      const result = await createOrderCheckoutLink(order.id, origin)
+      if (!result.ok) return NextResponse.json({ error: result.reason || 'Stripe link creation failed' }, { status: 500 })
       created += 1
     }
 

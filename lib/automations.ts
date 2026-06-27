@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { sendOrderTemplate } from '@/lib/sms'
+import { createOrderCheckoutLink } from '@/lib/stripeLinks'
 
 // Unified "if this, then that" automation engine.
 //
@@ -27,11 +28,12 @@ export type AutomationRow = {
   action_set_status: string | null
   action_set_light: string | null
   action_set_ready: string | null
+  action_regenerate_link: boolean | null
   action_send_template_id: string | null
 }
 
 const AUTOMATION_SELECT =
-  'id, is_active, sort_order, trigger_type, trigger_template_id, trigger_keyword, trigger_status, match_mode, action_set_status, action_set_light, action_send_template_id, action_set_ready'
+  'id, is_active, sort_order, trigger_type, trigger_template_id, trigger_keyword, trigger_status, match_mode, action_set_status, action_set_light, action_set_ready, action_regenerate_link, action_send_template_id'
 
 // First word of a reply, lowercased and stripped of punctuation.
 function firstWord(content: string): string {
@@ -75,6 +77,11 @@ export async function applyAutomationActions(orderId: string, a: AutomationRow):
   }
   if (Object.keys(update).length) {
     await supabaseAdmin.from('delivery_orders').update(update).eq('id', orderId)
+  }
+  // Mint a fresh Stripe link first, so a template sent below picks up the new
+  // {stripe_checkout_url} (used by the "reply PAY for a new link" flow).
+  if (a.action_regenerate_link) {
+    try { await createOrderCheckoutLink(orderId) } catch (e) { console.error('[automation] regenerate link failed', orderId, e) }
   }
   if (a.action_send_template_id) {
     const { data: tpl } = await supabaseAdmin
