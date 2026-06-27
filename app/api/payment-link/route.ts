@@ -7,6 +7,7 @@ import { getRequestUser } from '@/lib/apiAuth'
 import { getSmsTemplate, renderSmsTemplate } from '@/lib/paymentMessage'
 import { stripeForBrand, resolveOrderBrand } from '@/lib/stripe'
 import { brandConfig } from '@/lib/brand'
+import { getMerchantConfig } from '@/lib/merchant'
 
 function isEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
@@ -82,7 +83,8 @@ export async function POST(request: NextRequest) {
     let deliveryStatus: string | null = null
     if (deliveryMethod === 'sms') {
       const template = await getSmsTemplate()
-      const message = renderSmsTemplate(template, { customerName, amount, orderNumber, link: stripeUrl })
+      const merchant = await getMerchantConfig(brand)
+      const message = renderSmsTemplate(template, { customerName, amount, orderNumber, link: stripeUrl }, merchant)
       try {
         const messageId = await sendMessageMediaSms(customerPhone, message, brand)
         deliveryStatus = `SMS sent (${messageId})`

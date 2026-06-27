@@ -1,6 +1,24 @@
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { formatAmountAu } from '@/lib/format'
 
+// Brand merchant fields usable in payment-app templates (same set as the
+// dashboard templates). Passed in by callers that know the order's brand.
+export type TemplateMerchant = { displayName?: string; showroomPhone?: string; warehousePhone?: string; email?: string; address?: string; bankName?: string; bankBsb?: string; bankAccount?: string }
+
+function applyMerchant(text: string, m?: TemplateMerchant): string {
+  const g = (v?: string) => v || ''
+  return text
+    .replaceAll('{merchant}', g(m?.displayName))
+    .replaceAll('{merchant_showroom_phone}', g(m?.showroomPhone))
+    .replaceAll('{merchant_phone}', g(m?.showroomPhone))
+    .replaceAll('{merchant_warehouse_phone}', g(m?.warehousePhone))
+    .replaceAll('{merchant_email}', g(m?.email))
+    .replaceAll('{merchant_address}', g(m?.address))
+    .replaceAll('{merchant_bank}', g(m?.bankName))
+    .replaceAll('{merchant_bsb}', g(m?.bankBsb))
+    .replaceAll('{merchant_account}', g(m?.bankAccount))
+}
+
 // The SMS sent to the customer with their payment link is editable by admins
 // and stored in app_settings. Falls back to this default when unset.
 export const SMS_TEMPLATE_KEY = 'payment_link_sms_template'
@@ -16,8 +34,8 @@ export async function getSmsTemplate(): Promise<string> {
   return value || DEFAULT_SMS_TEMPLATE
 }
 
-export function renderSmsTemplate(template: string, fields: { customerName: string; amount: number; orderNumber: string; link: string }) {
-  return template
+export function renderSmsTemplate(template: string, fields: { customerName: string; amount: number; orderNumber: string; link: string }, merchant?: TemplateMerchant) {
+  return applyMerchant(template, merchant)
     .replaceAll('{customer_name}', fields.customerName || '')
     .replaceAll('{amount}', formatAmountAu(fields.amount))
     .replaceAll('{order_number}', fields.orderNumber || '')
@@ -52,8 +70,8 @@ export async function getEmailTemplates(): Promise<{ subject: string; body: stri
 
 // {allocation_note} is filled by the webhook with the applied/not-applied
 // sentence, so admins control the wording around it without owning the logic.
-export function renderEmailTemplate(template: string, fields: { customerName: string; orderNumber: string; amount: number; paidAt: string; allocationNote: string }) {
-  return template
+export function renderEmailTemplate(template: string, fields: { customerName: string; orderNumber: string; amount: number; paidAt: string; allocationNote: string }, merchant?: TemplateMerchant) {
+  return applyMerchant(template, merchant)
     .replaceAll('{customer_name}', fields.customerName || '')
     .replaceAll('{order_number}', fields.orderNumber || '')
     .replaceAll('{amount}', formatAmountAu(fields.amount))

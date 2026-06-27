@@ -489,14 +489,14 @@ export default function AdminTemplatesPage() {
           <label>Customer SMS (sent with the payment link)
             <textarea value={payTpl.sms} onChange={(event) => setPayTpl((t) => ({ ...t, sms: event.target.value }))} style={{ minHeight: 120 }} />
           </label>
-          <p className="muted" style={{ margin: 0, fontSize: 12.5 }}>Placeholders: {'{customer_name}'}, {'{amount}'}, {'{order_number}'}, {'{link}'}. Must include {'{link}'}.</p>
+          <p className="muted" style={{ margin: 0, fontSize: 12.5 }}>Placeholders: {'{customer_name}'}, {'{amount}'}, {'{order_number}'}, {'{link}'}, {'{merchant}'}, {'{merchant_showroom_phone}'}, {'{merchant_warehouse_phone}'}, {'{merchant_email}'}, {'{merchant_address}'}, {'{merchant_bank}'}, {'{merchant_bsb}'}, {'{merchant_account}'}. Must include {'{link}'}.</p>
           <label>Salesperson confirmation email — subject
             <input value={payTpl.emailSubject} onChange={(event) => setPayTpl((t) => ({ ...t, emailSubject: event.target.value }))} />
           </label>
           <label>Salesperson confirmation email — body
             <textarea value={payTpl.emailBody} onChange={(event) => setPayTpl((t) => ({ ...t, emailBody: event.target.value }))} style={{ minHeight: 160 }} />
           </label>
-          <p className="muted" style={{ margin: 0, fontSize: 12.5 }}>Placeholders: {'{customer_name}'}, {'{order_number}'}, {'{amount}'}, {'{paid_at}'}, {'{allocation_note}'}.</p>
+          <p className="muted" style={{ margin: 0, fontSize: 12.5 }}>Placeholders: {'{customer_name}'}, {'{order_number}'}, {'{amount}'}, {'{paid_at}'}, {'{allocation_note}'}, {'{merchant}'}, {'{merchant_showroom_phone}'}, {'{merchant_warehouse_phone}'}, {'{merchant_email}'}, {'{merchant_address}'}, {'{merchant_bank}'}, {'{merchant_bsb}'}, {'{merchant_account}'}.</p>
           <button type="button" onClick={savePaymentTemplates}>Save Payment App Templates</button>
         </section> : null}
 

@@ -6,6 +6,8 @@ import { sendEmail } from '@/lib/email'
 import { formatAmountAu } from '@/lib/format'
 import { getEmailTemplates, renderEmailTemplate } from '@/lib/paymentMessage'
 import { verifyStripeEvent } from '@/lib/stripe'
+import { getMerchantConfig } from '@/lib/merchant'
+import type { Brand } from '@/lib/brand'
 
 // Ad-hoc payment links (from the standalone Payment Link tool).
 //
@@ -15,7 +17,7 @@ import { verifyStripeEvent } from '@/lib/stripe'
 // If there's no matching order, the payment stays entirely in the payment app —
 // the shared stripe_payments ledger row is acknowledged immediately so it never
 // shows on the dashboard. Either way the salesperson gets a confirmation email.
-async function confirmAdhocPaymentLink(session: Stripe.Checkout.Session, amountPaid: number) {
+async function confirmAdhocPaymentLink(session: Stripe.Checkout.Session, amountPaid: number, brand: Brand) {
   const { data: link } = await supabaseAdmin
     .from('payment_links')
     .select('id, customer_name, order_number, salesperson_email, salesperson_name, status')
@@ -73,8 +75,9 @@ async function confirmAdhocPaymentLink(session: Stripe.Checkout.Session, amountP
       paidAt: new Date().toLocaleString('en-AU'),
       allocationNote
     }
+    const merchant = await getMerchantConfig(brand)
     try {
-      await sendEmail({ to: returnTo, subject: renderEmailTemplate(subjectTpl, fields), text: renderEmailTemplate(bodyTpl, fields) })
+      await sendEmail({ to: returnTo, subject: renderEmailTemplate(subjectTpl, fields, merchant), text: renderEmailTemplate(bodyTpl, fields, merchant) })
       await supabaseAdmin.from('payment_links').update({ confirmation_sent_at: new Date().toISOString() }).eq('id', link.id)
     } catch (error) {
       console.error('[stripe-webhook] payment-link confirmation email failed', error)
@@ -93,8 +96,11 @@ export async function POST(request: NextRequest) {
   const raw = await request.text()
 
   let event: Stripe.Event
+  let signingBrand: Brand = 'bca'
   try {
-    event = verifyStripeEvent(raw, signature).event
+    const verified = verifyStripeEvent(raw, signature)
+    event = verified.event
+    signingBrand = verified.brand
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Signature verification failed' }, { status: 400 })
   }
@@ -121,7 +127,7 @@ export async function POST(request: NextRequest) {
 
         // Ad-hoc Payment Link tool: confirm to the salesperson, skip order logic.
         if (session.metadata?.kind === 'adhoc_payment_link') {
-          const handled = await confirmAdhocPaymentLink(session, amountPaid)
+          const handled = await confirmAdhocPaymentLink(session, amountPaid, signingBrand)
           if (handled) return NextResponse.json({ received: true, paymentLink: true })
         }
 
