@@ -50,6 +50,8 @@ export default function AdminTemplatesPage() {
   const [templateList, setTemplateList] = useState<{ id: string; name: string }[]>([])
   const [automations, setAutomations] = useState<Automation[]>([])
   const [newAuto, setNewAuto] = useState<NewAutomation>(emptyAuto)
+  const [editingAutoId, setEditingAutoId] = useState<string | null>(null)
+  const [editAuto, setEditAuto] = useState<NewAutomation>(emptyAuto)
 
   const isAdmin = myRole === 'admin'
 
@@ -299,6 +301,51 @@ export default function AdminTemplatesPage() {
     setStatus('User updated.')
   }
 
+  const statusOpts = customerStatuses.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)
+
+  function startEditAuto(a: Automation) {
+    setEditingAutoId(a.id)
+    setEditAuto({ trigger_type: a.trigger_type, trigger_template_id: a.trigger_template_id || '', trigger_keyword: a.trigger_keyword || '', trigger_status: a.trigger_status || '', match_mode: a.match_mode || 'keyword', action_set_status: a.action_set_status || '', action_set_light: a.action_set_light || '', action_set_ready: a.action_set_ready || '', action_send_template_id: a.action_send_template_id || '' })
+  }
+  function validateAuto(p: NewAutomation): string {
+    if ((p.trigger_type === 'template_sent' || p.trigger_type === 'reply_to_template') && !p.trigger_template_id) return 'Pick the template for this trigger.'
+    if (p.trigger_type === 'reply_keyword' && !p.trigger_keyword.trim()) return 'Enter the keyword for this trigger.'
+    if (p.trigger_type === 'status_set' && !p.trigger_status.trim()) return 'Pick the status that triggers this rule.'
+    if (REPLY_TRIGGERS.includes(p.trigger_type) && p.match_mode === 'keyword' && !p.trigger_keyword.trim()) return 'Enter the keyword to match, or change the match type.'
+    if (!p.action_set_status && !p.action_set_light && !p.action_set_ready && !p.action_send_template_id) return 'Pick at least one action.'
+    return ''
+  }
+  function autoPatch(p: NewAutomation): Record<string, unknown> {
+    const patch: Record<string, unknown> = { action_set_status: p.action_set_status || null, action_set_light: p.action_set_light || null, action_set_ready: p.action_set_ready || null, action_send_template_id: p.action_send_template_id || null }
+    if (p.trigger_type === 'template_sent' || p.trigger_type === 'reply_to_template') patch.trigger_template_id = p.trigger_template_id || null
+    if (REPLY_TRIGGERS.includes(p.trigger_type)) { patch.trigger_keyword = p.trigger_keyword || null; patch.match_mode = p.match_mode }
+    if (p.trigger_type === 'status_set') patch.trigger_status = p.trigger_status || null
+    return patch
+  }
+  async function saveEditAuto(id: string) {
+    const err = validateAuto(editAuto)
+    if (err) return setStatus(err)
+    await updateAutomation(id, autoPatch(editAuto))
+    setEditingAutoId(null)
+    setStatus('Automation updated.')
+  }
+  const condFields = (draft: NewAutomation, set: (d: NewAutomation) => void) => {
+    const isReply = REPLY_TRIGGERS.includes(draft.trigger_type)
+    const matchOpts = draft.trigger_type === 'reply_keyword' ? ['keyword', 'any'] : ['keyword', 'affirmative', 'negative', 'any']
+    return <>
+      {(draft.trigger_type === 'template_sent' || draft.trigger_type === 'reply_to_template') ? <label style={{ minWidth: 200 }}>Template<select value={draft.trigger_template_id} onChange={(e) => set({ ...draft, trigger_template_id: e.target.value })}><option value="">— Choose template —</option>{templateList.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label> : null}
+      {draft.trigger_type === 'status_set' ? <label style={{ minWidth: 200 }}>When status becomes<select value={draft.trigger_status} onChange={(e) => set({ ...draft, trigger_status: e.target.value })}><option value="">— Choose status —</option>{statusOpts.map((s) => <option key={s} value={s}>{s}</option>)}</select></label> : null}
+      {isReply ? <label style={{ minWidth: 170 }}>Reply matches<select value={draft.match_mode} onChange={(e) => set({ ...draft, match_mode: e.target.value })}>{matchOpts.map((m) => <option key={m} value={m}>{matchLabel[m]}</option>)}</select></label> : null}
+      {isReply && draft.match_mode === 'keyword' ? <label style={{ minWidth: 140 }}>Keyword<input value={draft.trigger_keyword} onChange={(e) => set({ ...draft, trigger_keyword: e.target.value })} placeholder="e.g. DEBIT" /></label> : null}
+    </>
+  }
+  const actionFields = (draft: NewAutomation, set: (d: NewAutomation) => void) => <>
+    <label style={{ minWidth: 180 }}>Set status<select value={draft.action_set_status} onChange={(e) => set({ ...draft, action_set_status: e.target.value })}><option value="">— No change —</option>{statusOpts.map((s) => <option key={s} value={s}>{s}</option>)}</select></label>
+    <label style={{ minWidth: 150 }}>Set light<select value={draft.action_set_light} onChange={(e) => set({ ...draft, action_set_light: e.target.value })}><option value="">— No change —</option>{Object.keys(lightLabel).map((k) => <option key={k} value={k}>{lightLabel[k]}</option>)}</select></label>
+    <label style={{ minWidth: 150 }}>Set prep<select value={draft.action_set_ready} onChange={(e) => set({ ...draft, action_set_ready: e.target.value })}><option value="">— No change —</option><option value="Ready">Ready</option><option value="Not Ready">Not Ready</option></select></label>
+    <label style={{ minWidth: 200 }}>Send template<select value={draft.action_send_template_id} onChange={(e) => set({ ...draft, action_send_template_id: e.target.value })}><option value="">— None —</option>{templateList.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
+  </>
+
   return (
     <main>
       <div className="card grid" style={{ maxWidth: 1200, margin: '0 auto' }}>
@@ -335,42 +382,43 @@ export default function AdminTemplatesPage() {
           <p className="muted" style={{ margin: 0 }}>One place for all &quot;if this, then that&quot; rules. Pick a <strong>trigger</strong> (a template being sent, or a customer reply) and the <strong>actions</strong> that follow (set the customer status, the delivery light, the prep status, and/or auto-send a template). For replies, rules run <strong>top to bottom and the first match wins</strong> — use the arrows to order them.</p>
 
           {/* Builder */}
-          {(() => {
-            const statusOpts = customerStatuses.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)
-            const isReply = REPLY_TRIGGERS.includes(newAuto.trigger_type)
-            const matchOpts = newAuto.trigger_type === 'reply_keyword' ? ['keyword', 'any'] : ['keyword', 'affirmative', 'negative', 'any']
-            return (
-              <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12, display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>
-                <label style={{ minWidth: 230 }}>Trigger<select value={newAuto.trigger_type} onChange={(e) => setNewAuto((a) => ({ ...a, trigger_type: e.target.value, match_mode: e.target.value === 'reply_keyword' ? 'keyword' : a.match_mode }))}>{Object.keys(triggerLabel).map((k) => <option key={k} value={k}>{triggerLabel[k]}</option>)}</select></label>
-                {(newAuto.trigger_type === 'template_sent' || newAuto.trigger_type === 'reply_to_template') ? <label style={{ minWidth: 200 }}>Template<select value={newAuto.trigger_template_id} onChange={(e) => setNewAuto((a) => ({ ...a, trigger_template_id: e.target.value }))}><option value="">— Choose template —</option>{templateList.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label> : null}
-                {newAuto.trigger_type === 'status_set' ? <label style={{ minWidth: 200 }}>When status becomes<select value={newAuto.trigger_status} onChange={(e) => setNewAuto((a) => ({ ...a, trigger_status: e.target.value }))}><option value="">— Choose status —</option>{statusOpts.map((s) => <option key={s} value={s}>{s}</option>)}</select></label> : null}
-                {isReply ? <label style={{ minWidth: 170 }}>Reply matches<select value={newAuto.match_mode} onChange={(e) => setNewAuto((a) => ({ ...a, match_mode: e.target.value }))}>{matchOpts.map((m) => <option key={m} value={m}>{matchLabel[m]}</option>)}</select></label> : null}
-                {isReply && newAuto.match_mode === 'keyword' ? <label style={{ minWidth: 140 }}>Keyword<input value={newAuto.trigger_keyword} onChange={(e) => setNewAuto((a) => ({ ...a, trigger_keyword: e.target.value }))} placeholder="e.g. DEBIT" /></label> : null}
-                <div style={{ flexBasis: '100%', height: 0 }} />
-                <label style={{ minWidth: 180 }}>Set status<select value={newAuto.action_set_status} onChange={(e) => setNewAuto((a) => ({ ...a, action_set_status: e.target.value }))}><option value="">— No change —</option>{statusOpts.map((s) => <option key={s} value={s}>{s}</option>)}</select></label>
-                <label style={{ minWidth: 150 }}>Set light<select value={newAuto.action_set_light} onChange={(e) => setNewAuto((a) => ({ ...a, action_set_light: e.target.value }))}><option value="">— No change —</option>{Object.keys(lightLabel).map((k) => <option key={k} value={k}>{lightLabel[k]}</option>)}</select></label>
-                <label style={{ minWidth: 150 }}>Set prep<select value={newAuto.action_set_ready} onChange={(e) => setNewAuto((a) => ({ ...a, action_set_ready: e.target.value }))}><option value="">— No change —</option><option value="Ready">Ready</option><option value="Not Ready">Not Ready</option></select></label>
-                <label style={{ minWidth: 200 }}>Send template<select value={newAuto.action_send_template_id} onChange={(e) => setNewAuto((a) => ({ ...a, action_send_template_id: e.target.value }))}><option value="">— None —</option>{templateList.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
-                <button type="button" onClick={addAutomation}>Add automation</button>
-              </div>
-            )
-          })()}
+          <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12, display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>
+            <label style={{ minWidth: 230 }}>Trigger<select value={newAuto.trigger_type} onChange={(e) => setNewAuto((a) => ({ ...a, trigger_type: e.target.value, match_mode: e.target.value === 'reply_keyword' ? 'keyword' : a.match_mode }))}>{Object.keys(triggerLabel).map((k) => <option key={k} value={k}>{triggerLabel[k]}</option>)}</select></label>
+            {condFields(newAuto, setNewAuto as (d: NewAutomation) => void)}
+            <div style={{ flexBasis: '100%', height: 0 }} />
+            {actionFields(newAuto, setNewAuto as (d: NewAutomation) => void)}
+            <button type="button" onClick={addAutomation}>Add automation</button>
+          </div>
 
           {/* List */}
           <div className="grid" style={{ gap: 8 }}>
             {automations.length ? automations.map((a, i) => (
-              <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 10, opacity: a.is_active ? 1 : 0.55, flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <button type="button" className="btn-secondary" style={{ padding: '0 8px', lineHeight: 1.4 }} disabled={i === 0} onClick={() => moveAutomation(a.id, 'up')} aria-label="Move up">▲</button>
-                  <button type="button" className="btn-secondary" style={{ padding: '0 8px', lineHeight: 1.4 }} disabled={i === automations.length - 1} onClick={() => moveAutomation(a.id, 'down')} aria-label="Move down">▼</button>
+              editingAutoId === a.id ? (
+                <div key={a.id} style={{ border: '2px solid var(--accent, #1a1a1a)', borderRadius: 10, padding: 12 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>{triggerLabel[a.trigger_type] || a.trigger_type} <span className="muted" style={{ fontWeight: 400 }}>(trigger type can&apos;t be changed — delete and re-add to change it)</span></div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>
+                    {condFields(editAuto, setEditAuto as (d: NewAutomation) => void)}
+                    <div style={{ flexBasis: '100%', height: 0 }} />
+                    {actionFields(editAuto, setEditAuto as (d: NewAutomation) => void)}
+                    <button type="button" onClick={() => saveEditAuto(a.id)}>Save</button>
+                    <button type="button" className="btn-secondary" onClick={() => setEditingAutoId(null)}>Cancel</button>
+                  </div>
                 </div>
-                <div style={{ flex: 1, minWidth: 260 }}>
-                  <div style={{ fontWeight: 700, fontSize: 13.5 }}>{automationWhen(a)}</div>
-                  <div className="muted" style={{ fontSize: 13 }}>→ {automationThen(a)}</div>
+              ) : (
+                <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 10, opacity: a.is_active ? 1 : 0.55, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <button type="button" className="btn-secondary" style={{ padding: '0 8px', lineHeight: 1.4 }} disabled={i === 0} onClick={() => moveAutomation(a.id, 'up')} aria-label="Move up">▲</button>
+                    <button type="button" className="btn-secondary" style={{ padding: '0 8px', lineHeight: 1.4 }} disabled={i === automations.length - 1} onClick={() => moveAutomation(a.id, 'down')} aria-label="Move down">▼</button>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 260 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13.5 }}>{automationWhen(a)}</div>
+                    <div className="muted" style={{ fontSize: 13 }}>→ {automationThen(a)}</div>
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5 }}><input type="checkbox" checked={a.is_active} onChange={(e) => updateAutomation(a.id, { is_active: e.target.checked })} style={{ width: 'auto' }} />Active</label>
+                  <button type="button" className="btn-secondary" onClick={() => startEditAuto(a)}>Edit</button>
+                  <button type="button" className="btn-danger" onClick={() => deleteAutomation(a.id)}>Delete</button>
                 </div>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5 }}><input type="checkbox" checked={a.is_active} onChange={(e) => updateAutomation(a.id, { is_active: e.target.checked })} style={{ width: 'auto' }} />Active</label>
-                <button type="button" className="btn-danger" onClick={() => deleteAutomation(a.id)}>Delete</button>
-              </div>
+              )
             )) : <p className="muted" style={{ margin: 0 }}>No automations yet. Build one above.</p>}
           </div>
         </section> : null}
