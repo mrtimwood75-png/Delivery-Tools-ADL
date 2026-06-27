@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
-import { sendAutoReply } from '@/lib/sms'
+import { runSimpleTrigger } from '@/lib/automations'
 import { sendEmail } from '@/lib/email'
 import { formatAmountAu } from '@/lib/format'
 import { getEmailTemplates, renderEmailTemplate } from '@/lib/paymentMessage'
@@ -46,8 +46,8 @@ async function confirmAdhocPaymentLink(session: Stripe.Checkout.Session, amountP
         .update({ payment_due: remainingDue, payment_status: remainingDue > 0 ? 'Unpaid' : 'Paid' })
         .eq('id', order.id)
       await supabaseAdmin.from('stripe_payments').update({ order_id: order.id }).eq('session_id', session.id)
-      const ack = await sendAutoReply(order.id, 'payment_received')
-      console.log('[stripe-webhook] adhoc payment applied to order', { orderId: order.id, orderNumber, remainingDue, ...ack })
+      const fired = await runSimpleTrigger(order.id, 'payment_received')
+      console.log('[stripe-webhook] adhoc payment applied to order', { orderId: order.id, orderNumber, remainingDue, automationsFired: fired })
       allocatedOrder = orderNumber
     }
   }
@@ -140,9 +140,9 @@ export async function POST(request: NextRequest) {
             .update({ payment_due: newDue, payment_status: newDue > 0 ? 'Unpaid' : 'Paid' })
             .eq('id', order.id)
           await supabaseAdmin.from('stripe_payments').update({ order_id: order.id }).eq('session_id', sessionId)
-          // Best-effort acknowledgement SMS (only sends if a template is tagged 'payment_received').
-          const ack = await sendAutoReply(order.id, 'payment_received')
-          console.log('[stripe-webhook] payment-received SMS', { orderId: order.id, ...ack })
+          // Run any "payment received" automations (e.g. send a receipt SMS).
+          const fired = await runSimpleTrigger(order.id, 'payment_received')
+          console.log('[stripe-webhook] payment-received automations', { orderId: order.id, automationsFired: fired })
         }
       }
     }

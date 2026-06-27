@@ -12,7 +12,7 @@ type Automation = { id: string; is_active: boolean; sort_order: number; trigger_
 type NewAutomation = { trigger_type: string; trigger_template_id: string; trigger_keyword: string; trigger_status: string; match_mode: string; action_set_status: string; action_set_light: string; action_set_ready: string; action_send_template_id: string }
 const emptyAuto: NewAutomation = { trigger_type: 'reply_to_template', trigger_template_id: '', trigger_keyword: '', trigger_status: '', match_mode: 'keyword', action_set_status: '', action_set_light: '', action_set_ready: '', action_send_template_id: '' }
 const lightLabel: Record<string, string> = { confirmed: '🟢 Confirmed', awaiting: '🟡 Awaiting', rejected: '🔴 Rejected', none: '⚪ Clear' }
-const triggerLabel: Record<string, string> = { template_sent: 'When this template is sent', reply_keyword: 'When a reply keyword matches', reply_to_template: 'When a customer replies to a template', status_set: 'When the status is changed to…', delivery_date_set: 'When a delivery date is set', delivery_date_cleared: 'When a delivery date is cleared' }
+const triggerLabel: Record<string, string> = { template_sent: 'When this template is sent', reply_keyword: 'When a reply keyword matches', reply_to_template: 'When a customer replies to a template', status_set: 'When the status is changed to…', delivery_date_set: 'When a delivery date is set', delivery_date_cleared: 'When a delivery date is cleared', payment_received: 'When a payment is received (Stripe)' }
 const REPLY_TRIGGERS = ['reply_keyword', 'reply_to_template']
 const matchLabel: Record<string, string> = { keyword: 'starts with keyword', affirmative: 'says YES (yes/1/yeah…)', negative: 'says NO (no/2/nope…)', any: 'sends any reply' }
 
@@ -133,6 +133,7 @@ export default function AdminTemplatesPage() {
     if (a.trigger_type === 'status_set') return `When the status is changed to "${a.trigger_status || '—'}"`
     if (a.trigger_type === 'delivery_date_set') return 'When a delivery date is set'
     if (a.trigger_type === 'delivery_date_cleared') return 'When a delivery date is cleared'
+    if (a.trigger_type === 'payment_received') return 'When a payment is received (Stripe)'
     if (a.trigger_type === 'reply_to_template') return `When a customer replies to "${templateName(a.trigger_template_id)}" and ${matchLabel[a.match_mode || 'any']}${a.match_mode === 'keyword' && a.trigger_keyword ? ` "${a.trigger_keyword}"` : ''}`
     return `When a reply ${matchLabel[a.match_mode || 'keyword']}${a.trigger_keyword ? ` "${a.trigger_keyword}"` : ''}`
   }

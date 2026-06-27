@@ -137,22 +137,8 @@ export default function TemplatesPage() {
             <h2 style={{ margin: 0 }}>{selectedId ? 'Edit template' : 'Add template'}</h2>
             <label>Template name<input value={name} onChange={(event) => setName(event.target.value)} required /></label>
             <label>Template text<textarea value={templateText} onChange={(event) => setTemplateText(event.target.value)} required style={{ minHeight: 150 }} /></label>
-            <label title="Tag a template so the system sends it automatically for a specific built-in event. These are fixed events the app understands — not keyword matching.">Built-in automation (template purpose)
-              <select value={purpose} onChange={(event) => setPurpose(event.target.value)}>
-                <option value="">General message (no automation)</option>
-                <option value="delivery_booking">Delivery booking — track confirmation reply</option>
-                <option value="delivery_confirmed_reply">Auto-reply when customer confirms (YES)</option>
-                <option value="delivery_rejected_reply">Auto-reply when customer rejects (NO)</option>
-                <option value="payment_received">Auto-reply when payment received (Stripe)</option>
-              </select>
-            </label>
             <p className="muted" style={{ margin: 0, fontSize: 12 }}>
-              This tags a template for one of the app&apos;s <strong>built-in automations</strong> (fixed events it already handles):
-              <br />• <strong>General message</strong> — no automation; a template you pick and send manually.
-              <br />• <strong>Delivery booking</strong> — sending it arms the delivery light (🟡); a reply of 1/yes confirms (🟢) and 2/no rejects (🔴), updating the order status.
-              <br />• <strong>Auto-reply (YES/NO)</strong> — sent back automatically when the customer confirms/rejects a delivery booking. Tag only one template for each.
-              <br />• <strong>Payment received</strong> — sent automatically when a Stripe payment clears.
-              <br /><br />Need a reply triggered by a <em>word</em> the customer texts (e.g. &quot;DEBIT&quot;)? That&apos;s a <strong>Custom keyword reply</strong> — set those up under Admin → Custom keyword replies, not here.
+              Templates are just the message text now. To make a template send or react automatically — on a delivery booking, a customer reply, a status change, a delivery date, or a Stripe payment — set up a rule under <strong>Admin → Automations</strong>, where you pick the trigger and choose this template as the action.
             </p>
             <p className="muted">Available fields: {'{customer_name}'}, {'{order_number}'}, {'{salesperson}'}, {'{mobile}'}, {'{balance_payable}'}, {'{payment_status}'}, {'{order_status}'}, {'{stripe_checkout_url}'}, {'{street_address}'}, {'{suburb}'}, {'{state}'}, {'{postcode}'}, {'{address}'}, {'{goods_in_date}'}, {'{ready_after_date}'}, {'{delivery_date}'}</p>
             <div className="grid grid-2"><button type="submit">Save Template</button><button type="button" onClick={clearForm}>New Template</button></div>
