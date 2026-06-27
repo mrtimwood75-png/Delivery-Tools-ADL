@@ -10,17 +10,23 @@ type StripeOrderRow = {
   source: string | null
   stripe_link: string | null
   stripe_link_amount: number | null
+  stripe_link_expires_at: string | null
   customers: { name: string | null; phone: string | null } | { name: string | null; phone: string | null }[] | null
 }
+
+// Stripe Checkout Sessions can live at most 24h; expire ~1 min early to be safe.
+const LINK_TTL_SECONDS = 24 * 60 * 60 - 60
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const orderIds = Array.isArray(body.orderIds) ? body.orderIds.map((id: unknown) => String(id)).filter(Boolean) : []
 
+    const origin = request.headers.get('origin') || `https://${request.headers.get('host') || 'delivery-tools-adl.vercel.app'}`
+
     let query = supabaseAdmin
       .from('delivery_orders')
-      .select('id, order_number, payment_due, source, stripe_link, stripe_link_amount, customers(name, phone)')
+      .select('id, order_number, payment_due, source, stripe_link, stripe_link_amount, stripe_link_expires_at, customers(name, phone)')
       .gt('payment_due', 0)
 
     if (orderIds.length) query = query.in('id', orderIds)
@@ -36,12 +42,16 @@ export async function POST(request: NextRequest) {
       const amount = Number(order.payment_due || 0)
       const priorAmount = Number(order.stripe_link_amount || 0)
       const existingLink = String(order.stripe_link || '').trim()
-      const needsNewLink = !existingLink || Math.round(amount * 100) !== Math.round(priorAmount * 100)
+      const expiresAt = order.stripe_link_expires_at ? new Date(order.stripe_link_expires_at).getTime() : 0
+      const expired = expiresAt > 0 && expiresAt <= Date.now()
+      const needsNewLink = !existingLink || expired || Math.round(amount * 100) !== Math.round(priorAmount * 100)
 
       if (!needsNewLink) {
         reused += 1
         continue
       }
+
+      const expiresEpoch = Math.floor(Date.now() / 1000) + LINK_TTL_SECONDS
 
       const customer = Array.isArray(order.customers) ? order.customers[0] : order.customers
       const customerName = customer?.name || 'Customer'
@@ -52,6 +62,7 @@ export async function POST(request: NextRequest) {
       const session = await stripe.checkout.sessions.create({
         mode: 'payment',
         client_reference_id: order.order_number,
+        expires_at: expiresEpoch,
         line_items: [{
           price_data: {
             currency: 'aud',
@@ -63,9 +74,10 @@ export async function POST(request: NextRequest) {
           },
           quantity: 1
         }],
-        success_url: process.env.STRIPE_SUCCESS_URL || 'https://boconcept.com.au',
+        success_url: `${origin}/pay/success?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: process.env.STRIPE_CANCEL_URL || 'https://boconcept.com.au',
         metadata: {
+          kind: 'order_balance',
           customer_name: customerName,
           order_number: order.order_number,
           balance_payable: String(amount)
@@ -77,7 +89,8 @@ export async function POST(request: NextRequest) {
         .update({
           stripe_session_id: session.id,
           stripe_link: session.url,
-          stripe_link_amount: amount
+          stripe_link_amount: amount,
+          stripe_link_expires_at: new Date(expiresEpoch * 1000).toISOString()
         })
         .eq('id', order.id)
 

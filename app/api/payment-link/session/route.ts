@@ -12,7 +12,8 @@ export async function GET(request: NextRequest) {
 
   try {
     const found = await retrieveCheckoutSession(sessionId)
-    if (!found || found.session.metadata?.kind !== 'adhoc_payment_link') {
+    const kind = found?.session.metadata?.kind
+    if (!found || (kind !== 'adhoc_payment_link' && kind !== 'order_balance')) {
       return NextResponse.json({ error: 'Not found.' }, { status: 404 })
     }
     const { session, brand } = found

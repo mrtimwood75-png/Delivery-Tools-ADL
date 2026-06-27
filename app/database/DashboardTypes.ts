@@ -29,6 +29,7 @@ export type Order = {
   goods_in_date: string | null
   delivery_date: string | null
   stripe_link: string | null
+  stripe_link_expires_at?: string | null
   payment_due: number
   sms_status: string | null
   date_sent: string | null
