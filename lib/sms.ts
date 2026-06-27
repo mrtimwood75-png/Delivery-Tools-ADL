@@ -1,6 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { formatAmountAu, normalizeMobileAu } from '@/lib/format'
-import { brandConfig, brandForSource } from '@/lib/brand'
+import { brandConfig, brandForSource, type Brand } from '@/lib/brand'
 
 export type SmsCustomer = { name: string; phone: string | null; address: string | null; street_address: string | null; suburb: string | null; state: string | null; postcode: string | null }
 export type OrderRow = {
@@ -34,6 +34,7 @@ export function buildMessage(order: OrderRow, templateText: string) {
   const street = customer?.street_address || customer?.address || ''
   const fullAddress = [street, customer?.suburb, customer?.state, customer?.postcode].map((part) => String(part || '').trim()).filter(Boolean).join(' ')
   return templateText
+    .replaceAll('{merchant}', brandConfig(brandForSource(order.source)).displayName)
     .replaceAll('{customer_name}', customer?.name || '')
     .replaceAll('{order_number}', order.order_number || '')
     .replaceAll('{salesperson}', order.salesperson || '')
@@ -52,10 +53,14 @@ export function buildMessage(order: OrderRow, templateText: string) {
     .replaceAll('{delivery_date}', formatDateAu(order.delivery_date))
 }
 
-export async function sendMessageMediaSms(toMobile: string, message: string, fromSenderId?: string) {
-  const apiKey = process.env.MESSAGEMEDIA_API_KEY
-  const apiSecret = process.env.MESSAGEMEDIA_API_SECRET
-  const senderId = (fromSenderId || process.env.MESSAGEMEDIA_SENDER_ID || '')
+// Send an SMS. When `brand` is given, the message goes out through THAT brand's
+// MessageMedia account (its own API key/secret and sender number); otherwise the
+// legacy single-account env vars are used.
+export async function sendMessageMediaSms(toMobile: string, message: string, brand?: Brand) {
+  const cfg = brand ? brandConfig(brand) : null
+  const apiKey = cfg?.smsApiKey || process.env.MESSAGEMEDIA_API_KEY
+  const apiSecret = cfg?.smsApiSecret || process.env.MESSAGEMEDIA_API_SECRET
+  const senderId = (cfg?.smsFrom || process.env.MESSAGEMEDIA_SENDER_ID || '')
   const baseUrl = (process.env.MESSAGEMEDIA_BASE_URL || 'https://api.messagemedia.com').replace(/\/$/, '')
 
   if (!apiKey || !apiSecret) throw new Error('Missing MessageMedia credentials')
@@ -92,22 +97,36 @@ export async function sendMessageMediaSms(toMobile: string, message: string, fro
 // Asks MessageMedia for the current status of a sent message (delivered, enroute,
 // rejected, expired, etc.). Never throws — returns 'unknown' with an error string.
 export async function getMessageMediaStatus(messageId: string): Promise<{ status: string; content?: string; destination?: string; error?: string }> {
-  const apiKey = process.env.MESSAGEMEDIA_API_KEY
-  const apiSecret = process.env.MESSAGEMEDIA_API_SECRET
   const baseUrl = (process.env.MESSAGEMEDIA_BASE_URL || 'https://api.messagemedia.com').replace(/\/$/, '')
-  if (!apiKey || !apiSecret) return { status: 'unknown', error: 'Missing MessageMedia credentials' }
-  const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64')
-  try {
-    const res = await fetch(`${baseUrl}/v1/messages/${encodeURIComponent(messageId)}`, {
-      headers: { Accept: 'application/json', Authorization: `Basic ${auth}` }
-    })
-    const text = await res.text()
-    if (!res.ok) return { status: 'unknown', error: text ? text.slice(0, 200) : `HTTP ${res.status}` }
-    const body = JSON.parse(text)
-    return { status: String(body.status || 'unknown'), content: body.content, destination: body.destination_number }
-  } catch (error) {
-    return { status: 'unknown', error: error instanceof Error ? error.message : 'lookup failed' }
+  // Try each configured account (a message id is only known to the account that
+  // sent it), de-duped by API key.
+  const creds: Array<{ apiKey: string; apiSecret: string }> = []
+  const seen = new Set<string>()
+  for (const brand of ['bca', 'transforma'] as Brand[]) {
+    const cfg = brandConfig(brand)
+    if (cfg.smsApiKey && cfg.smsApiSecret && !seen.has(cfg.smsApiKey)) {
+      seen.add(cfg.smsApiKey)
+      creds.push({ apiKey: cfg.smsApiKey, apiSecret: cfg.smsApiSecret })
+    }
   }
+  if (!creds.length) return { status: 'unknown', error: 'Missing MessageMedia credentials' }
+
+  let lastError = ''
+  for (const { apiKey, apiSecret } of creds) {
+    const auth = Buffer.from(`${apiKey}:${apiSecret}`).toString('base64')
+    try {
+      const res = await fetch(`${baseUrl}/v1/messages/${encodeURIComponent(messageId)}`, {
+        headers: { Accept: 'application/json', Authorization: `Basic ${auth}` }
+      })
+      const text = await res.text()
+      if (!res.ok) { lastError = text ? text.slice(0, 200) : `HTTP ${res.status}`; continue }
+      const body = JSON.parse(text)
+      return { status: String(body.status || 'unknown'), content: body.content, destination: body.destination_number }
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : 'lookup failed'
+    }
+  }
+  return { status: 'unknown', error: lastError || 'lookup failed' }
 }
 
 // Sends a specific template to an order's customer and logs it. Never throws.
@@ -125,10 +144,10 @@ export async function sendOrderTemplate(orderId: string, tpl: { id: string; temp
 
   const message = buildMessage(order as unknown as OrderRow, tpl.template_text)
   const base = { customer_id: order.customer_id, order_id: order.id, direction: 'outbound', phone: normalizeMobileAu(mobile), body: message, template_id: tpl.id, purpose }
-  // Send from the brand the customer bought from (BCA vs Transforma).
-  const smsFrom = brandConfig(brandForSource((order as { source?: string | null }).source)).smsFrom
+  // Send through the MessageMedia account of the brand the customer bought from.
+  const brand = brandForSource((order as { source?: string | null }).source)
   try {
-    const messageId = await sendMessageMediaSms(mobile, message, smsFrom)
+    const messageId = await sendMessageMediaSms(mobile, message, brand)
     await supabaseAdmin.from('sms_messages').insert({ ...base, status: 'sent', provider_message_id: messageId })
     return { ok: true, reason: `sent (${messageId})` }
   } catch (error) {

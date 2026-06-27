@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
       const template = await getSmsTemplate()
       const message = renderSmsTemplate(template, { customerName, amount, orderNumber, link: stripeUrl })
       try {
-        const messageId = await sendMessageMediaSms(customerPhone, message, brandCfg.smsFrom)
+        const messageId = await sendMessageMediaSms(customerPhone, message, brand)
         deliveryStatus = `SMS sent (${messageId})`
       } catch (error) {
         deliveryStatus = `SMS failed: ${error instanceof Error ? error.message : 'send failed'}`

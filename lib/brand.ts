@@ -12,6 +12,8 @@ export type BrandConfig = {
   logo: string
   emailFrom: string
   smsFrom: string
+  smsApiKey: string
+  smsApiSecret: string
   stripeSecretKey: string
   stripeWebhookSecret: string
 }
@@ -38,6 +40,8 @@ export function brandConfig(brand: Brand): BrandConfig {
     logo: BRAND_LOGO[brand],
     emailFrom: env(`${p}_EMAIL_FROM`, 'EMAIL_FROM'),
     smsFrom: env(`${p}_SMS_FROM`, 'MESSAGEMEDIA_SENDER_ID'),
+    smsApiKey: env(`${p}_MESSAGEMEDIA_API_KEY`, 'MESSAGEMEDIA_API_KEY'),
+    smsApiSecret: env(`${p}_MESSAGEMEDIA_API_SECRET`, 'MESSAGEMEDIA_API_SECRET'),
     stripeSecretKey: env(`${p}_STRIPE_SECRET_KEY`, 'STRIPE_SECRET_KEY'),
     stripeWebhookSecret: env(`${p}_STRIPE_WEBHOOK_SECRET`, 'STRIPE_WEBHOOK_SECRET')
   }

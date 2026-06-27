@@ -18,11 +18,15 @@ function pick(obj: AnyRecord, keys: string[]): string {
 }
 
 function authorised(request: NextRequest) {
-  const secret = process.env.SMS_WEBHOOK_SECRET
-  if (!secret) return true
+  // Accept the legacy secret or either brand's secret, so both the BCA and
+  // Transforma MessageMedia accounts can post replies to this one endpoint.
+  const secrets = [process.env.SMS_WEBHOOK_SECRET, process.env.BCA_SMS_WEBHOOK_SECRET, process.env.TRANSFORMA_SMS_WEBHOOK_SECRET]
+    .map((s) => (s || '').trim())
+    .filter(Boolean)
+  if (!secrets.length) return true
   const url = new URL(request.url)
-  const provided = url.searchParams.get('secret') || request.headers.get('x-webhook-secret') || ''
-  return provided === secret
+  const provided = (url.searchParams.get('secret') || request.headers.get('x-webhook-secret') || '').trim()
+  return secrets.includes(provided)
 }
 
 type Match = { customer_id: string | null; order_id: string | null; template_id: string | null }

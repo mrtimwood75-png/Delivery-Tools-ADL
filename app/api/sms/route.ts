@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { normalizeMobileAu } from '@/lib/format'
 import { buildMessage, sendMessageMediaSms, SMS_ORDER_SELECT, type OrderRow } from '@/lib/sms'
-import { brandConfig, brandForSource } from '@/lib/brand'
+import { brandForSource } from '@/lib/brand'
 import { runTemplateSent } from '@/lib/automations'
 
 function templateAudienceMatches(balance: number, audience: string) {
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
 
       const message = buildMessage(order, templateText)
       try {
-        const messageId = await sendMessageMediaSms(mobile, message, brandConfig(brandForSource(order.source)).smsFrom)
+        const messageId = await sendMessageMediaSms(mobile, message, brandForSource(order.source))
         const orderUpdate: Record<string, unknown> = { sms_status: `Sent (${messageId})`, date_sent: new Date().toISOString() }
         if (purpose === 'delivery_booking') { orderUpdate.delivery_confirmation = 'awaiting'; orderUpdate.delivery_confirmation_at = new Date().toISOString() }
         await supabaseAdmin
