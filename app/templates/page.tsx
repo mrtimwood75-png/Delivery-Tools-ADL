@@ -140,7 +140,7 @@ export default function TemplatesPage() {
             <p className="muted" style={{ margin: 0, fontSize: 12 }}>
               Templates are just the message text now. To make a template send or react automatically — on a delivery booking, a customer reply, a status change, a delivery date, or a Stripe payment — set up a rule under <strong>Admin → Automations</strong>, where you pick the trigger and choose this template as the action.
             </p>
-            <p className="muted">Available fields: {'{merchant}'}, {'{customer_name}'}, {'{order_number}'}, {'{salesperson}'}, {'{mobile}'}, {'{balance_payable}'}, {'{payment_status}'}, {'{order_status}'}, {'{stripe_checkout_url}'}, {'{street_address}'}, {'{suburb}'}, {'{state}'}, {'{postcode}'}, {'{address}'}, {'{goods_in_date}'}, {'{ready_after_date}'}, {'{delivery_date}'}</p>
+            <p className="muted">Available fields: {'{merchant}'}, {'{merchant_phone}'}, {'{merchant_email}'}, {'{merchant_address}'}, {'{customer_name}'}, {'{order_number}'}, {'{salesperson}'}, {'{mobile}'}, {'{balance_payable}'}, {'{payment_status}'}, {'{order_status}'}, {'{stripe_checkout_url}'}, {'{street_address}'}, {'{suburb}'}, {'{state}'}, {'{postcode}'}, {'{address}'}, {'{goods_in_date}'}, {'{ready_after_date}'}, {'{delivery_date}'}</p>
             <div className="grid grid-2"><button type="submit">Save Template</button><button type="button" onClick={clearForm}>New Template</button></div>
             {selectedId ? <button type="button" onClick={deleteTemplate}>Delete Template</button> : null}
           </form>

@@ -33,8 +33,12 @@ export function buildMessage(order: OrderRow, templateText: string) {
   const customer = Array.isArray(order.customers) ? order.customers[0] : order.customers
   const street = customer?.street_address || customer?.address || ''
   const fullAddress = [street, customer?.suburb, customer?.state, customer?.postcode].map((part) => String(part || '').trim()).filter(Boolean).join(' ')
+  const cfg = brandConfig(brandForSource(order.source))
   return templateText
-    .replaceAll('{merchant}', brandConfig(brandForSource(order.source)).displayName)
+    .replaceAll('{merchant}', cfg.displayName)
+    .replaceAll('{merchant_phone}', cfg.supportPhone)
+    .replaceAll('{merchant_email}', cfg.supportEmail)
+    .replaceAll('{merchant_address}', cfg.supportAddress)
     .replaceAll('{customer_name}', customer?.name || '')
     .replaceAll('{order_number}', order.order_number || '')
     .replaceAll('{salesperson}', order.salesperson || '')
