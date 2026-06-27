@@ -43,7 +43,7 @@ export default function PackingListImport() {
   return (
     <section className="card grid" style={{ boxShadow: 'none' }}>
       <div>
-        <h2 style={{ margin: '0 0 8px' }}>Packing List</h2>
+        <h2 style={{ margin: '0 0 8px' }}>Packing List - Order</h2>
         <p className="muted" style={{ margin: 0 }}>Upload the Packing List report to fill in delivery addresses and product line items for orders already imported from Tour Totals. Matches on order number; line items are replaced.</p>
       </div>
       <label>
