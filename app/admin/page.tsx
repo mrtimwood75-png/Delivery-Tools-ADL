@@ -12,7 +12,8 @@ type Automation = { id: string; is_active: boolean; sort_order: number; trigger_
 type NewAutomation = { trigger_type: string; trigger_template_id: string; trigger_keyword: string; match_mode: string; action_set_status: string; action_set_light: string; action_set_ready: string; action_send_template_id: string }
 const emptyAuto: NewAutomation = { trigger_type: 'reply_to_template', trigger_template_id: '', trigger_keyword: '', match_mode: 'keyword', action_set_status: '', action_set_light: '', action_set_ready: '', action_send_template_id: '' }
 const lightLabel: Record<string, string> = { confirmed: '🟢 Confirmed', awaiting: '🟡 Awaiting', rejected: '🔴 Rejected', none: '⚪ Clear' }
-const triggerLabel: Record<string, string> = { template_sent: 'When this template is sent', reply_keyword: 'When a reply keyword matches', reply_to_template: 'When a customer replies to a template' }
+const triggerLabel: Record<string, string> = { template_sent: 'When this template is sent', reply_keyword: 'When a reply keyword matches', reply_to_template: 'When a customer replies to a template', delivery_date_set: 'When a delivery date is set', delivery_date_cleared: 'When a delivery date is cleared' }
+const REPLY_TRIGGERS = ['reply_keyword', 'reply_to_template']
 const matchLabel: Record<string, string> = { keyword: 'starts with keyword', affirmative: 'says YES (yes/1/yeah…)', negative: 'says NO (no/2/nope…)', any: 'sends any reply' }
 
 const roles = ASSIGNABLE_ROLES
@@ -96,7 +97,7 @@ export default function AdminTemplatesPage() {
     const payload = { ...newAuto }
     if ((payload.trigger_type === 'template_sent' || payload.trigger_type === 'reply_to_template') && !payload.trigger_template_id) return setStatus('Pick the template for this trigger.')
     if (payload.trigger_type === 'reply_keyword' && !payload.trigger_keyword.trim()) return setStatus('Enter the keyword for this trigger.')
-    if ((payload.match_mode === 'keyword') && payload.trigger_type !== 'template_sent' && !payload.trigger_keyword.trim()) return setStatus('Enter the keyword to match, or change the match type.')
+    if (REPLY_TRIGGERS.includes(payload.trigger_type) && payload.match_mode === 'keyword' && !payload.trigger_keyword.trim()) return setStatus('Enter the keyword to match, or change the match type.')
     if (!payload.action_set_status && !payload.action_set_light && !payload.action_set_ready && !payload.action_send_template_id) return setStatus('Pick at least one action.')
     const response = await fetch('/api/automations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
     const result = await response.json()
@@ -128,6 +129,8 @@ export default function AdminTemplatesPage() {
   function templateName(id: string | null) { return templateList.find((t) => t.id === id)?.name || (id ? '(unknown template)' : '') }
   function automationWhen(a: Automation) {
     if (a.trigger_type === 'template_sent') return `When "${templateName(a.trigger_template_id)}" is sent`
+    if (a.trigger_type === 'delivery_date_set') return 'When a delivery date is set'
+    if (a.trigger_type === 'delivery_date_cleared') return 'When a delivery date is cleared'
     if (a.trigger_type === 'reply_to_template') return `When a customer replies to "${templateName(a.trigger_template_id)}" and ${matchLabel[a.match_mode || 'any']}${a.match_mode === 'keyword' && a.trigger_keyword ? ` "${a.trigger_keyword}"` : ''}`
     return `When a reply ${matchLabel[a.match_mode || 'keyword']}${a.trigger_keyword ? ` "${a.trigger_keyword}"` : ''}`
   }
@@ -368,7 +371,7 @@ export default function AdminTemplatesPage() {
           {/* Builder */}
           {(() => {
             const statusOpts = customerStatuses.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)
-            const isReply = newAuto.trigger_type !== 'template_sent'
+            const isReply = REPLY_TRIGGERS.includes(newAuto.trigger_type)
             const matchOpts = newAuto.trigger_type === 'reply_keyword' ? ['keyword', 'any'] : ['keyword', 'affirmative', 'negative', 'any']
             return (
               <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12, display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>

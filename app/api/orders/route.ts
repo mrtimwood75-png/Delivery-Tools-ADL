@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { sendEmail } from '@/lib/email'
+import { runSimpleTrigger } from '@/lib/automations'
 
 type OrderLookupRow = {
   id: string
@@ -229,6 +230,17 @@ export async function PATCH(request: NextRequest) {
     for (const key of ['order_status', 'ready_status', 'goods_ready_date', 'goods_in_date', 'delivery_date', 'order_notes', 'salesperson', 'delivery_confirmation']) {
       if (key in body) orderUpdate[key] = body[key] || null
     }
+
+    // Detect a delivery-date transition (null -> date, or date -> null) so the
+    // matching automations can fire after the update is written.
+    let deliveryTransition: 'delivery_date_set' | 'delivery_date_cleared' | null = null
+    if ('delivery_date' in body) {
+      const newVal = body.delivery_date || null
+      const { data: prev } = await supabaseAdmin.from('delivery_orders').select('delivery_date').eq('id', id).maybeSingle()
+      const oldVal = prev?.delivery_date || null
+      if (!oldVal && newVal) deliveryTransition = 'delivery_date_set'
+      else if (oldVal && !newVal) deliveryTransition = 'delivery_date_cleared'
+    }
     if ('delivery_confirmation' in body) orderUpdate.delivery_confirmation_at = new Date().toISOString()
 
     // Delivered jobs auto-archive; moving the status away from Delivered restores them.
@@ -323,7 +335,21 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ order: { id, ...('delivery_confirmation' in orderUpdate ? { delivery_confirmation: orderUpdate.delivery_confirmation } : {}) } })
+    // Fire delivery-date automations, then echo the resulting display fields so
+    // the dashboard reflects any status/light change without a reload.
+    const echo: Record<string, unknown> = {}
+    if ('delivery_confirmation' in orderUpdate) echo.delivery_confirmation = orderUpdate.delivery_confirmation
+    if (deliveryTransition) {
+      try { await runSimpleTrigger(id, deliveryTransition) } catch (e) { console.error('[automation] delivery-date trigger failed', id, e) }
+      const { data: after } = await supabaseAdmin
+        .from('delivery_orders')
+        .select('order_status, delivery_confirmation, ready_status, archived_at')
+        .eq('id', id)
+        .maybeSingle()
+      if (after) Object.assign(echo, after)
+    }
+
+    return NextResponse.json({ order: { id, ...echo } })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Order update failed.' }, { status: 500 })
   }

@@ -101,6 +101,22 @@ export async function runTemplateSent(orderId: string, templateId: string | null
   return rows.length
 }
 
+// Run all active automations for a simple order event that carries no template
+// or keyword condition (e.g. the delivery date being set or cleared). Actions
+// are additive, applied in sort order.
+export async function runSimpleTrigger(orderId: string, triggerType: string): Promise<number> {
+  if (!orderId || !triggerType) return 0
+  const { data } = await supabaseAdmin
+    .from('automations')
+    .select(AUTOMATION_SELECT)
+    .eq('is_active', true)
+    .eq('trigger_type', triggerType)
+    .order('sort_order', { ascending: true })
+  const rows = (data || []) as AutomationRow[]
+  for (const a of rows) await applyAutomationActions(orderId, a)
+  return rows.length
+}
+
 export type ReplyRunResult = { fired: boolean; automationId?: string; trigger?: string }
 
 // Evaluate reply automations for an inbound message. reply_to_template rules

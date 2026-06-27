@@ -4,7 +4,8 @@ import { supabaseAdmin } from '@/lib/supabaseAdmin'
 const SELECT =
   'id, is_active, sort_order, trigger_type, trigger_template_id, trigger_keyword, match_mode, action_set_status, action_set_light, action_set_ready, action_send_template_id'
 
-const TRIGGERS = new Set(['template_sent', 'reply_keyword', 'reply_to_template'])
+const TRIGGERS = new Set(['template_sent', 'reply_keyword', 'reply_to_template', 'delivery_date_set', 'delivery_date_cleared'])
+const REPLY_TRIGGERS = new Set(['reply_keyword', 'reply_to_template'])
 const MATCH_MODES = new Set(['keyword', 'affirmative', 'negative', 'any'])
 const LIGHTS = new Set(['confirmed', 'awaiting', 'rejected', 'none'])
 const READY = new Set(['Ready', 'Not Ready'])
@@ -60,9 +61,9 @@ export async function POST(request: NextRequest) {
       .from('automations')
       .insert({
         trigger_type,
-        trigger_template_id: trigger_type === 'reply_keyword' ? null : trigger_template_id,
-        trigger_keyword: trigger_type === 'template_sent' ? null : trigger_keyword,
-        match_mode: trigger_type === 'template_sent' ? null : (match_mode || (trigger_keyword ? 'keyword' : 'any')),
+        trigger_template_id: (trigger_type === 'template_sent' || trigger_type === 'reply_to_template') ? trigger_template_id : null,
+        trigger_keyword: REPLY_TRIGGERS.has(trigger_type) ? trigger_keyword : null,
+        match_mode: REPLY_TRIGGERS.has(trigger_type) ? (match_mode || (trigger_keyword ? 'keyword' : 'any')) : null,
         action_set_status,
         action_set_light,
         action_set_ready,
