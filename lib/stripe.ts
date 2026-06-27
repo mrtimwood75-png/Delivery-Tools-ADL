@@ -35,11 +35,11 @@ export async function resolveOrderBrand(orderNumber: string): Promise<Brand> {
 
 // Retrieve a Checkout session that may live in either account (the public
 // success page only has the session id). Tries each configured brand.
-export async function retrieveCheckoutSession(sessionId: string): Promise<Stripe.Checkout.Session | null> {
+export async function retrieveCheckoutSession(sessionId: string): Promise<{ session: Stripe.Checkout.Session; brand: Brand } | null> {
   for (const brand of configuredBrands()) {
     try {
       const session = await stripeForBrand(brand).checkout.sessions.retrieve(sessionId)
-      if (session) return session
+      if (session) return { session, brand }
     } catch {
       // Not in this account — try the next.
     }
