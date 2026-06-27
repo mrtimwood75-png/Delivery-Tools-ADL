@@ -102,7 +102,7 @@ export default function TemplatesPage() {
             <BrandLogos height={30} />
             <h1 style={{ margin: 0, fontSize: 22, letterSpacing: '-0.01em' }}>SMS Templates</h1>
           </div>
-          <Link href="/database" style={{ textDecoration: 'none' }}><button type="button" className="btn-secondary">← Back to dashboard</button></Link>
+          <Link href="/admin" style={{ textDecoration: 'none' }}><button type="button" className="btn-secondary">← Back to Admin</button></Link>
         </div>
 
         <div className="grid grid-2" style={{ alignItems: 'start' }}>
