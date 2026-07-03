@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { sendEmail } from '@/lib/email'
+import { brandForSource, brandConfig } from '@/lib/brand'
 import { runSimpleTrigger, runStatusSet } from '@/lib/automations'
 
 type OrderLookupRow = {
@@ -19,10 +20,14 @@ function formatDateAu(value: string | null | undefined) {
 async function sendDeliveryEmail(orderId: string): Promise<{ ok: boolean; reason: string }> {
   const { data: order } = await supabaseAdmin
     .from('delivery_orders')
-    .select('order_number, salesperson, delivery_date, customers(name)')
+    .select('order_number, salesperson, delivery_date, source, customers(name)')
     .eq('id', orderId)
     .maybeSingle()
   if (!order || !order.salesperson) return { ok: false, reason: 'order has no salesperson' }
+
+  // Send from the order's own merchant address (BCA_EMAIL_FROM / TRANSFORMA_EMAIL_FROM),
+  // falling back to the global EMAIL_FROM.
+  const from = brandConfig(brandForSource(order.source)).emailFrom || undefined
 
   const { data: sp } = await supabaseAdmin
     .from('salespeople')
@@ -47,7 +52,7 @@ async function sendDeliveryEmail(orderId: string): Promise<{ ok: boolean; reason
     .replaceAll('{salesperson_name}', sp.name || order.salesperson || '')
     .replaceAll('{delivery_date}', formatDateAu(order.delivery_date) || 'today')
 
-  await sendEmail({ to: sp.email, subject: fill(tpl.subject), text: fill(tpl.body) })
+  await sendEmail({ to: sp.email, subject: fill(tpl.subject), text: fill(tpl.body), from })
   return { ok: true, reason: `sent to ${sp.email}` }
 }
 
