@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { sendEmail } from '@/lib/email'
 import { brandForSource, brandConfig } from '@/lib/brand'
+import { getMerchantConfig } from '@/lib/merchant'
 import { runSimpleTrigger, runStatusSet } from '@/lib/automations'
 
 type OrderLookupRow = {
@@ -25,9 +26,13 @@ async function sendDeliveryEmail(orderId: string): Promise<{ ok: boolean; reason
     .maybeSingle()
   if (!order || !order.salesperson) return { ok: false, reason: 'order has no salesperson' }
 
-  // Send from the order's own merchant address (BCA_EMAIL_FROM / TRANSFORMA_EMAIL_FROM),
-  // falling back to the global EMAIL_FROM.
-  const from = brandConfig(brandForSource(order.source)).emailFrom || undefined
+  // Send from the order's own merchant address, as configured in Admin (Merchant
+  // details → Email). Falls back to the brand env address, then global EMAIL_FROM.
+  const brand = brandForSource(order.source)
+  const merchant = await getMerchantConfig(brand)
+  const from = merchant.email
+    ? `${merchant.displayName} <${merchant.email}>`
+    : (brandConfig(brand).emailFrom || undefined)
 
   const { data: sp } = await supabaseAdmin
     .from('salespeople')
