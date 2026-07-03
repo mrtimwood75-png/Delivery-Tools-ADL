@@ -25,6 +25,7 @@ const { auth } = NextAuth(authConfig)
 const PUBLIC_API = [
   '/api/stripe-webhook',
   '/api/sms/inbound',
+  '/api/wodely/webhook',
   '/api/payment-link/session',
   '/api/import/transforma',
   '/api/bootstrap'

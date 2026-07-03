@@ -1,64 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
-import { sendEmail } from '@/lib/email'
-import { brandForSource, brandConfig } from '@/lib/brand'
-import { getMerchantConfig } from '@/lib/merchant'
+import { sendDeliveryEmail } from '@/lib/deliveryEmail'
 import { runSimpleTrigger, runStatusSet } from '@/lib/automations'
 
 type OrderLookupRow = {
   id: string
   customer_id: string | null
-}
-
-function formatDateAu(value: string | null | undefined) {
-  if (!value) return ''
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('en-AU')
-}
-
-// Best-effort: email the order's salesperson that it has been delivered,
-// using the admin-configured template. Silently skips if anything is missing.
-async function sendDeliveryEmail(orderId: string): Promise<{ ok: boolean; reason: string }> {
-  const { data: order } = await supabaseAdmin
-    .from('delivery_orders')
-    .select('order_number, salesperson, delivery_date, source, customers(name)')
-    .eq('id', orderId)
-    .maybeSingle()
-  if (!order || !order.salesperson) return { ok: false, reason: 'order has no salesperson' }
-
-  // Send from the order's own merchant address, as configured in Admin (Merchant
-  // details → Email). Falls back to the brand env address, then global EMAIL_FROM.
-  const brand = brandForSource(order.source)
-  const merchant = await getMerchantConfig(brand)
-  const from = merchant.email
-    ? `${merchant.displayName} <${merchant.email}>`
-    : (brandConfig(brand).emailFrom || undefined)
-
-  const { data: sp } = await supabaseAdmin
-    .from('salespeople')
-    .select('name, email')
-    .eq('code', order.salesperson)
-    .maybeSingle()
-  if (!sp?.email) return { ok: false, reason: `no email set for salesperson "${order.salesperson}"` }
-
-  const { data: tpl } = await supabaseAdmin
-    .from('email_templates')
-    .select('subject, body, enabled')
-    .eq('key', 'delivery')
-    .maybeSingle()
-  if (!tpl) return { ok: false, reason: 'no delivery email template' }
-  if (!tpl.enabled) return { ok: false, reason: 'delivery email is turned off in Admin' }
-
-  const customer = Array.isArray(order.customers) ? order.customers[0] : order.customers
-  const fill = (text: string) => String(text || '')
-    .replaceAll('{order_number}', order.order_number || '')
-    .replaceAll('{customer_name}', customer?.name || '')
-    .replaceAll('{salesperson_code}', order.salesperson || '')
-    .replaceAll('{salesperson_name}', sp.name || order.salesperson || '')
-    .replaceAll('{delivery_date}', formatDateAu(order.delivery_date) || 'today')
-
-  await sendEmail({ to: sp.email, subject: fill(tpl.subject), text: fill(tpl.body), from })
-  return { ok: true, reason: `sent to ${sp.email}` }
 }
 
 const customerSelect = 'id, name, phone, address, street_address, suburb, state, postcode, delivery_notes'
