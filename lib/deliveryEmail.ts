@@ -55,6 +55,11 @@ export async function sendDeliveryEmail(
     .replaceAll('{delivery_date}', formatDateAu(order.delivery_date) || 'today')
     .replaceAll('{proof_of_delivery}', podLink)
     .replaceAll('{pod_link}', podLink)
+    .replaceAll('{merchant}', merchant.displayName)
+    .replaceAll('{merchant_email}', merchant.email)
+    .replaceAll('{merchant_showroom_phone}', merchant.showroomPhone)
+    .replaceAll('{merchant_warehouse_phone}', merchant.warehousePhone)
+    .replaceAll('{merchant_address}', merchant.address)
 
   let body = fill(tpl.body)
   // If Wodely gave us a proof-of-delivery link but the template doesn't reference
