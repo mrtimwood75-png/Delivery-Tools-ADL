@@ -5,14 +5,18 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const customerId = String(body.customerId || '')
-    if (!customerId) return NextResponse.json({ error: 'Missing customerId.' }, { status: 400 })
+    const phone = String(body.phone || '')
+    if (!customerId && !phone) return NextResponse.json({ error: 'Missing customerId or phone.' }, { status: 400 })
 
-    const { error } = await supabaseAdmin
+    // Matched replies are marked read by customer; unmatched replies (from a
+    // number not yet imported) are dismissed by their sender phone number.
+    let query = supabaseAdmin
       .from('sms_messages')
       .update({ read_at: new Date().toISOString() })
-      .eq('customer_id', customerId)
       .eq('direction', 'inbound')
       .is('read_at', null)
+    query = customerId ? query.eq('customer_id', customerId) : query.is('customer_id', null).eq('phone', phone)
+    const { error } = await query
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ ok: true })
