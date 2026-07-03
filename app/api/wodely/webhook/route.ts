@@ -48,29 +48,31 @@ function statusOf(task: AnyRecord): string {
   return ['status', 'taskStatus', 'statusName', 'state'].map((k) => clean(task[k])).join(' ').toLowerCase()
 }
 
-function looksLikeUrl(v: unknown): boolean {
-  return typeof v === 'string' && /^https?:\/\//i.test(v.trim())
+// Pull the first http(s) URL out of a value (handles a bare URL or an <a href>).
+function extractUrl(v: unknown): string {
+  const m = clean(v).match(/https?:\/\/[^\s"'<>]+/i)
+  return m ? m[0] : ''
 }
 
-// Find a proof-of-delivery link anywhere in the payload: a URL value whose key
-// mentions proof/pod/signature/receipt, else the first such-keyed value.
+// Find a proof-of-delivery / tracking link anywhere in the payload: a URL under
+// a key mentioning proof/pod/signature/receipt/tracking/link, else any URL found.
 function proofLinkOf(root: unknown): string {
-  let urlHit = ''
-  let anyHit = ''
-  const keyRe = /proof|pod|signature|receipt/i
+  let keyedHit = ''
+  let anyUrl = ''
+  const keyRe = /proof|pod|signature|receipt|tracking|link|hyperlink/i
   const walk = (v: unknown, key = '') => {
-    if (urlHit) return
+    if (keyedHit) return
     if (v && typeof v === 'object') {
       for (const [k, val] of Object.entries(v as AnyRecord)) walk(val, k)
       return
     }
-    if (keyRe.test(key)) {
-      if (looksLikeUrl(v)) urlHit = clean(v)
-      else if (!anyHit && clean(v)) anyHit = clean(v)
-    }
+    const url = extractUrl(v)
+    if (!url) return
+    if (keyRe.test(key)) keyedHit = url
+    else if (!anyUrl) anyUrl = url
   }
   walk(root)
-  return urlHit || (looksLikeUrl(anyHit) ? anyHit : '')
+  return keyedHit || anyUrl
 }
 
 async function POST_handler(request: NextRequest) {
