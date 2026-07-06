@@ -1,4 +1,0 @@
-stripe
-requests
-pandas
-openpyxl
