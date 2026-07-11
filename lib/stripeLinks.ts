@@ -6,7 +6,7 @@ import { brandForSource } from '@/lib/brand'
 export const LINK_TTL_SECONDS = 24 * 60 * 60 - 60
 
 function baseUrl(origin?: string): string {
-  return (origin || process.env.PUBLIC_BASE_URL || 'https://delivery-tools-adl.vercel.app').replace(/\/$/, '')
+  return (origin || process.env.PUBLIC_BASE_URL || 'https://dashboard-adl.vercel.app').replace(/\/$/, '')
 }
 
 // Mint a fresh Checkout Session for an order's current balance, in the order's

@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const orderIds = Array.isArray(body.orderIds) ? body.orderIds.map((id: unknown) => String(id)).filter(Boolean) : []
 
-    const origin = request.headers.get('origin') || `https://${request.headers.get('host') || 'delivery-tools-adl.vercel.app'}`
+    const origin = request.headers.get('origin') || `https://${request.headers.get('host') || 'dashboard-adl.vercel.app'}`
 
     let query = supabaseAdmin
       .from('delivery_orders')
