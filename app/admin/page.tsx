@@ -41,7 +41,7 @@ export default function AdminTemplatesPage() {
   const [newUserPassword, setNewUserPassword] = useState('')
   const [newUserDash, setNewUserDash] = useState(true)
   const [newUserPay, setNewUserPay] = useState(false)
-  const [payTpl, setPayTpl] = useState({ sms: '', emailSubject: '', emailBody: '' })
+  const [payTpl, setPayTpl] = useState({ sms: '', emailSubject: '', emailBody: '', successSms: '' })
   const [salespeople, setSalespeople] = useState<{ id: string; code: string; name: string | null; email: string | null; brand: string | null }[]>([])
   const [newSalesCode, setNewSalesCode] = useState('')
   const [newSalesBrand, setNewSalesBrand] = useState('transforma')
@@ -73,12 +73,12 @@ export default function AdminTemplatesPage() {
   async function loadPaymentTemplates() {
     const response = await fetch('/api/payment-link/template', { cache: 'no-store' })
     const result = await response.json()
-    if (response.ok) setPayTpl({ sms: result.smsTemplate || '', emailSubject: result.emailSubject || '', emailBody: result.emailBody || '' })
+    if (response.ok) setPayTpl({ sms: result.smsTemplate || '', emailSubject: result.emailSubject || '', emailBody: result.emailBody || '', successSms: result.successSms || '' })
   }
 
   async function savePaymentTemplates() {
     setStatus('Saving Payment App templates...')
-    const response = await fetch('/api/payment-link/template', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ smsTemplate: payTpl.sms, emailSubject: payTpl.emailSubject, emailBody: payTpl.emailBody }) })
+    const response = await fetch('/api/payment-link/template', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ smsTemplate: payTpl.sms, emailSubject: payTpl.emailSubject, emailBody: payTpl.emailBody, successSms: payTpl.successSms }) })
     const result = await response.json()
     if (!response.ok) return setStatus(result.error || 'Payment App template save failed')
     setStatus('Payment App templates saved.')
@@ -499,6 +499,10 @@ export default function AdminTemplatesPage() {
             <textarea value={payTpl.emailBody} onChange={(event) => setPayTpl((t) => ({ ...t, emailBody: event.target.value }))} style={{ minHeight: 160 }} />
           </label>
           <p className="muted" style={{ margin: 0, fontSize: 12.5 }}>Placeholders: {'{customer_name}'}, {'{order_number}'}, {'{amount}'}, {'{paid_at}'}, {'{salesperson_name}'}, {'{allocation_note}'}, {'{merchant}'}, {'{merchant_showroom_phone}'}, {'{merchant_warehouse_phone}'}, {'{merchant_email}'}, {'{merchant_address}'}, {'{merchant_bank}'}, {'{merchant_bsb}'}, {'{merchant_account}'}.</p>
+          <label>Customer payment success SMS
+            <textarea value={payTpl.successSms} onChange={(event) => setPayTpl((t) => ({ ...t, successSms: event.target.value }))} style={{ minHeight: 100 }} />
+          </label>
+          <p className="muted" style={{ margin: 0, fontSize: 12.5 }}>Texted to the customer when an ad-hoc payment is received that has no matching dashboard order (when there is a matching order, the dashboard&apos;s own payment-received SMS is used instead). Placeholders: {'{customer_name}'}, {'{amount}'}, {'{order_number}'}, {'{salesperson_name}'}, {'{merchant}'}, {'{merchant_showroom_phone}'}, {'{merchant_warehouse_phone}'}, {'{merchant_email}'}, {'{merchant_address}'}, {'{merchant_bank}'}, {'{merchant_bsb}'}, {'{merchant_account}'}.</p>
           <button type="button" onClick={savePaymentTemplates}>Save Payment App Templates</button>
         </section> : null}
 

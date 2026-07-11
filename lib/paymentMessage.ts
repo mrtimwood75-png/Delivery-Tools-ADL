@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { formatAmountAu } from '@/lib/format'
+import type { Brand } from '@/lib/brand'
 
 // Brand merchant fields usable in payment-app templates (same set as the
 // dashboard templates). Passed in by callers that know the order's brand.
@@ -79,4 +80,32 @@ export function renderEmailTemplate(template: string, fields: { customerName: st
     .replaceAll('{paid_at}', fields.paidAt || '')
     .replaceAll('{salesperson_name}', fields.salespersonName || '')
     .replaceAll('{allocation_note}', fields.allocationNote || '')
+}
+
+// Payment-success SMS — sent to the CUSTOMER when an ad-hoc payment-link payment
+// clears that has no matching dashboard order (so the dashboard's own
+// payment_received automation never fires for it). Brand-scoped so each payment
+// app has its own wording, editable in that app's admin.
+export const PAYMENT_SUCCESS_SMS_PREFIX = 'payment_success_sms_template'
+export const DEFAULT_PAYMENT_SUCCESS_SMS = 'Hi {customer_name}, thanks — we have received your payment of {amount}. — {merchant}'
+
+export function paymentSuccessSmsKey(brand: Brand): string {
+  return `${PAYMENT_SUCCESS_SMS_PREFIX}_${brand}`
+}
+
+export async function getPaymentSuccessSms(brand: Brand): Promise<string> {
+  const { data } = await supabaseAdmin
+    .from('app_settings')
+    .select('setting_value')
+    .eq('setting_key', paymentSuccessSmsKey(brand))
+    .maybeSingle()
+  return String(data?.setting_value || '').trim() || DEFAULT_PAYMENT_SUCCESS_SMS
+}
+
+export function renderPaymentSuccessSms(template: string, fields: { customerName: string; amount: number; orderNumber: string; salespersonName?: string }, merchant?: TemplateMerchant) {
+  return applyMerchant(template, merchant)
+    .replaceAll('{customer_name}', fields.customerName || '')
+    .replaceAll('{amount}', formatAmountAu(fields.amount))
+    .replaceAll('{order_number}', fields.orderNumber || '')
+    .replaceAll('{salesperson_name}', fields.salespersonName || '')
 }

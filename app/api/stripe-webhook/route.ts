@@ -3,8 +3,9 @@ import Stripe from 'stripe'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { runSimpleTrigger } from '@/lib/automations'
 import { sendEmail } from '@/lib/email'
+import { sendMessageMediaSms } from '@/lib/sms'
 import { formatAmountAu } from '@/lib/format'
-import { getEmailTemplates, renderEmailTemplate } from '@/lib/paymentMessage'
+import { getEmailTemplates, renderEmailTemplate, getPaymentSuccessSms, renderPaymentSuccessSms } from '@/lib/paymentMessage'
 import { verifyStripeEvent } from '@/lib/stripe'
 import { getMerchantConfig } from '@/lib/merchant'
 import { brandConfig, type Brand } from '@/lib/brand'
@@ -20,7 +21,7 @@ import { brandConfig, type Brand } from '@/lib/brand'
 async function confirmAdhocPaymentLink(session: Stripe.Checkout.Session, amountPaid: number, brand: Brand) {
   const { data: link } = await supabaseAdmin
     .from('payment_links')
-    .select('id, customer_name, order_number, salesperson_email, salesperson_name, status')
+    .select('id, customer_name, customer_phone, order_number, salesperson_email, salesperson_name, status')
     .eq('stripe_session_id', session.id)
     .maybeSingle()
   if (!link) return false
@@ -60,6 +61,20 @@ async function confirmAdhocPaymentLink(session: Stripe.Checkout.Session, amountP
       .from('stripe_payments')
       .update({ acknowledged_at: new Date().toISOString() })
       .eq('session_id', session.id)
+
+    // The dashboard's own payment-received automation only fires on a matched
+    // order, so text the customer the payment-success SMS for this ad-hoc sale.
+    const customerPhone = String(link.customer_phone || '').trim()
+    if (customerPhone) {
+      try {
+        const template = await getPaymentSuccessSms(brand)
+        const merchant = await getMerchantConfig(brand)
+        const message = renderPaymentSuccessSms(template, { customerName: link.customer_name || '', amount: amountPaid, orderNumber, salespersonName: link.salesperson_name || '' }, merchant)
+        await sendMessageMediaSms(customerPhone, message, brand)
+      } catch (error) {
+        console.error('[stripe-webhook] payment-success SMS failed', error)
+      }
+    }
   }
 
   const returnTo = String(link.salesperson_email || session.metadata?.salesperson_email || '').trim()

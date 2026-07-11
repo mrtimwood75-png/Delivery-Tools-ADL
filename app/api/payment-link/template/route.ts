@@ -1,20 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { getRequestUser } from '@/lib/apiAuth'
+import { paymentBrandForHost } from '@/lib/host'
 import {
   getSmsTemplate, DEFAULT_SMS_TEMPLATE, SMS_TEMPLATE_KEY,
-  getEmailTemplates, DEFAULT_EMAIL_SUBJECT, DEFAULT_EMAIL_BODY, EMAIL_SUBJECT_KEY, EMAIL_BODY_KEY
+  getEmailTemplates, DEFAULT_EMAIL_SUBJECT, DEFAULT_EMAIL_BODY, EMAIL_SUBJECT_KEY, EMAIL_BODY_KEY,
+  getPaymentSuccessSms, DEFAULT_PAYMENT_SUCCESS_SMS, paymentSuccessSmsKey
 } from '@/lib/paymentMessage'
 
+// The payment-success SMS is per-brand, so on a payment host we edit that host's
+// brand; on the dashboard we default to BoConcept.
+function templateBrand(request: NextRequest) {
+  return paymentBrandForHost(request.headers.get('host')) || 'bca'
+}
+
 // Read the current templates (any logged-in user, for the editor).
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const brand = templateBrand(request)
   const smsTemplate = await getSmsTemplate()
   const { subject: emailSubject, body: emailBody } = await getEmailTemplates()
+  const successSms = await getPaymentSuccessSms(brand)
   return NextResponse.json({
     smsTemplate,
     emailSubject,
     emailBody,
-    defaults: { sms: DEFAULT_SMS_TEMPLATE, emailSubject: DEFAULT_EMAIL_SUBJECT, emailBody: DEFAULT_EMAIL_BODY }
+    successSms,
+    brand,
+    defaults: { sms: DEFAULT_SMS_TEMPLATE, emailSubject: DEFAULT_EMAIL_SUBJECT, emailBody: DEFAULT_EMAIL_BODY, successSms: DEFAULT_PAYMENT_SUCCESS_SMS }
   })
 }
 
@@ -51,6 +63,11 @@ export async function POST(request: NextRequest) {
     const v = body.emailBody.trim()
     if (!v) return NextResponse.json({ error: 'Email body cannot be empty.' }, { status: 400 })
     rows.push({ setting_key: EMAIL_BODY_KEY, setting_value: v, updated_at: now })
+  }
+  if (typeof body.successSms === 'string') {
+    const v = body.successSms.trim()
+    if (!v) return NextResponse.json({ error: 'Payment success SMS cannot be empty.' }, { status: 400 })
+    rows.push({ setting_key: paymentSuccessSmsKey(templateBrand(request)), setting_value: v, updated_at: now })
   }
 
   if (!rows.length) return NextResponse.json({ error: 'Nothing to save.' }, { status: 400 })

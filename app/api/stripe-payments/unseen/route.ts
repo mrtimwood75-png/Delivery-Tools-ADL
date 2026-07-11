@@ -10,10 +10,14 @@ type Row = {
 }
 
 export async function GET() {
+  // Only notify for payments that matched a dashboard order. Unmatched payments
+  // (ad-hoc payment-link sales, order-number typos, deleted orders) never raise
+  // a dashboard notification.
   const { data, error } = await supabaseAdmin
     .from('stripe_payments')
     .select('id, created_at, amount, order_number, delivery_orders(customers(name))')
     .is('acknowledged_at', null)
+    .not('order_id', 'is', null)
     .order('created_at', { ascending: false })
     .limit(50)
 
