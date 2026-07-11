@@ -120,6 +120,7 @@ export async function POST(request: NextRequest) {
         stripe_session_id: session.id,
         stripe_url: stripeUrl,
         status: 'pending',
+        brand,
         created_by: createdBy
       })
       .select('id, stripe_url, delivery_status')
@@ -138,11 +139,16 @@ export async function GET(request: NextRequest) {
   const user = await getRequestUser(request)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data, error } = await supabaseAdmin
+  // On a payment host, only that brand's links; on the dashboard, all.
+  const brand = paymentBrandForHost(request.headers.get('host'))
+  let query = supabaseAdmin
     .from('payment_links')
     .select('id, created_at, customer_name, order_number, amount, status, delivery_method, delivery_status, amount_paid, paid_at')
     .order('created_at', { ascending: false })
     .limit(50)
+  if (brand) query = query.eq('brand', brand)
+
+  const { data, error } = await query
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ links: data || [] })

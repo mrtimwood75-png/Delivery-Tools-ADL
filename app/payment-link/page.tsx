@@ -64,9 +64,8 @@ export default function PaymentLinkPage() {
 
   async function loadIsAdmin() {
     try {
-      const email = typeof window !== 'undefined' ? window.localStorage.getItem('delivery_tools_email') || '' : ''
-      if (!email) return
-      const res = await fetch(`/api/me?email=${encodeURIComponent(email)}`, { headers: await authHeader() })
+      // Identity comes from the session cookie server-side; no localStorage race.
+      const res = await fetch('/api/me', { headers: await authHeader() })
       const me = await res.json()
       if (res.ok) setIsAdmin(!!me.isAdmin)
     } catch { /* ignore */ }
