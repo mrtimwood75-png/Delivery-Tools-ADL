@@ -7,7 +7,7 @@ import { formatAmountAu } from '@/lib/format'
 import { getEmailTemplates, renderEmailTemplate } from '@/lib/paymentMessage'
 import { verifyStripeEvent } from '@/lib/stripe'
 import { getMerchantConfig } from '@/lib/merchant'
-import type { Brand } from '@/lib/brand'
+import { brandConfig, type Brand } from '@/lib/brand'
 
 // Ad-hoc payment links (from the standalone Payment Link tool).
 //
@@ -78,7 +78,7 @@ async function confirmAdhocPaymentLink(session: Stripe.Checkout.Session, amountP
     }
     const merchant = await getMerchantConfig(brand)
     try {
-      await sendEmail({ to: returnTo, subject: renderEmailTemplate(subjectTpl, fields, merchant), text: renderEmailTemplate(bodyTpl, fields, merchant) })
+      await sendEmail({ to: returnTo, subject: renderEmailTemplate(subjectTpl, fields, merchant), text: renderEmailTemplate(bodyTpl, fields, merchant), from: brandConfig(brand).emailFrom || undefined })
       await supabaseAdmin.from('payment_links').update({ confirmation_sent_at: new Date().toISOString() }).eq('id', link.id)
     } catch (error) {
       console.error('[stripe-webhook] payment-link confirmation email failed', error)
