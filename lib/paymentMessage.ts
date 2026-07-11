@@ -34,11 +34,12 @@ export async function getSmsTemplate(): Promise<string> {
   return value || DEFAULT_SMS_TEMPLATE
 }
 
-export function renderSmsTemplate(template: string, fields: { customerName: string; amount: number; orderNumber: string; link: string }, merchant?: TemplateMerchant) {
+export function renderSmsTemplate(template: string, fields: { customerName: string; amount: number; orderNumber: string; link: string; salespersonName?: string }, merchant?: TemplateMerchant) {
   return applyMerchant(template, merchant)
     .replaceAll('{customer_name}', fields.customerName || '')
     .replaceAll('{amount}', formatAmountAu(fields.amount))
     .replaceAll('{order_number}', fields.orderNumber || '')
+    .replaceAll('{salesperson_name}', fields.salespersonName || '')
     .replaceAll('{link}', fields.link || '')
 }
 
@@ -70,11 +71,12 @@ export async function getEmailTemplates(): Promise<{ subject: string; body: stri
 
 // {allocation_note} is filled by the webhook with the applied/not-applied
 // sentence, so admins control the wording around it without owning the logic.
-export function renderEmailTemplate(template: string, fields: { customerName: string; orderNumber: string; amount: number; paidAt: string; allocationNote: string }, merchant?: TemplateMerchant) {
+export function renderEmailTemplate(template: string, fields: { customerName: string; orderNumber: string; amount: number; paidAt: string; allocationNote: string; salespersonName?: string }, merchant?: TemplateMerchant) {
   return applyMerchant(template, merchant)
     .replaceAll('{customer_name}', fields.customerName || '')
     .replaceAll('{order_number}', fields.orderNumber || '')
     .replaceAll('{amount}', formatAmountAu(fields.amount))
     .replaceAll('{paid_at}', fields.paidAt || '')
+    .replaceAll('{salesperson_name}', fields.salespersonName || '')
     .replaceAll('{allocation_note}', fields.allocationNote || '')
 }

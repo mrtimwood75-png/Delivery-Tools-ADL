@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
     if (deliveryMethod === 'sms') {
       const template = await getSmsTemplate()
       const merchant = await getMerchantConfig(brand)
-      const message = renderSmsTemplate(template, { customerName, amount, orderNumber, link: stripeUrl }, merchant)
+      const message = renderSmsTemplate(template, { customerName, amount, orderNumber, link: stripeUrl, salespersonName }, merchant)
       try {
         const messageId = await sendMessageMediaSms(customerPhone, message, brand)
         deliveryStatus = `SMS sent (${messageId})`

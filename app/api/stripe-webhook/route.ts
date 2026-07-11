@@ -73,6 +73,7 @@ async function confirmAdhocPaymentLink(session: Stripe.Checkout.Session, amountP
       orderNumber,
       amount: amountPaid,
       paidAt: new Date().toLocaleString('en-AU'),
+      salespersonName: link.salesperson_name || '',
       allocationNote
     }
     const merchant = await getMerchantConfig(brand)
