@@ -7,6 +7,7 @@ import { getRequestUser } from '@/lib/apiAuth'
 import { getSmsTemplate, renderSmsTemplate } from '@/lib/paymentMessage'
 import { stripeForBrand, resolveOrderBrand } from '@/lib/stripe'
 import { brandConfig } from '@/lib/brand'
+import { paymentBrandForHost } from '@/lib/host'
 import { getMerchantConfig } from '@/lib/merchant'
 
 function isEmail(value: string) {
@@ -47,7 +48,9 @@ export async function POST(request: NextRequest) {
     const origin = request.headers.get('origin') || `https://${request.headers.get('host') || 'delivery-tools-adl.vercel.app'}`
 
     // Charge through the Stripe account of the brand this order belongs to.
-    const brand = await resolveOrderBrand(orderNumber)
+    // On a payment host the brand is fixed by the domain; on the dashboard it
+    // falls back to the order's own source.
+    const brand = paymentBrandForHost(request.headers.get('host')) || await resolveOrderBrand(orderNumber)
     const brandCfg = brandConfig(brand)
     const stripe = stripeForBrand(brand)
 

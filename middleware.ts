@@ -2,6 +2,7 @@ import NextAuth from 'next-auth'
 import { NextResponse } from 'next/server'
 import { authConfig } from '@/auth.config'
 import { STORE, isPaymentStore } from '@/lib/store'
+import { paymentBrandForHost } from '@/lib/host'
 import { isReadOnly } from '@/lib/roles'
 
 // Methods that change data. Read-only users are never allowed to use these.
@@ -82,13 +83,31 @@ export default auth((request) => {
     return NextResponse.redirect(url)
   }
 
+  // Which app this request is for is decided by host (payment domain -> that
+  // brand's payment app) or, on a dedicated single-brand deployment, by STORE.
+  const hostBrand = paymentBrandForHost(request.headers.get('host'))
+  const paymentMode = hostBrand !== null || isPaymentStore(STORE)
+
+  // Per-host access, fail-closed. Admins may use every app; everyone else needs
+  // the matching access flag for the app they landed on.
+  if (!user?.isAdmin) {
+    if (paymentMode && !user?.canPayments) {
+      return new NextResponse('You do not have access to the payments app.', { status: 403 })
+    }
+    if (!paymentMode && !user?.canDashboard) {
+      return new NextResponse('You do not have dashboard access.', { status: 403 })
+    }
+  }
+
   if ((pathname === '/admin' || pathname.startsWith('/admin/')) && !user?.isAdmin) {
     const url = request.nextUrl.clone()
-    url.pathname = isPaymentStore(STORE) ? '/payment-link' : '/database'
+    url.pathname = paymentMode ? '/payment-link' : '/database'
     return NextResponse.redirect(url)
   }
 
-  if (isPaymentStore(STORE) && !allowedOnPaymentStore(pathname)) {
+  // On a payment host/store, the dashboard is hidden — everything else rewrites
+  // to the payment tool.
+  if (paymentMode && !allowedOnPaymentStore(pathname)) {
     const url = request.nextUrl.clone()
     url.pathname = '/payment-link'
     return NextResponse.rewrite(url)
