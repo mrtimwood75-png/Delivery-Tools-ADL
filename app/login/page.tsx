@@ -31,7 +31,10 @@ export default function LoginPage() {
   const [status, setStatus] = useState('')
 
   useEffect(() => {
-    setHost(window.location.host.split(':')[0].toLowerCase())
+    const h = window.location.host.split(':')[0].toLowerCase()
+    setHost(h)
+    if (h === BCA_HOST) document.title = 'Customer Payments (BCA)'
+    else if (h === TRANS_HOST) document.title = 'Customer Payments (Transforma)'
     if (new URLSearchParams(window.location.search).get('pw') === '1') setShowPw(true)
   }, [])
 

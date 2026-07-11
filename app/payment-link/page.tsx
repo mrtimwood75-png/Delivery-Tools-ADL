@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import BrandLogos from '@/components/BrandLogos'
+import { paymentBrandForHost } from '@/lib/host'
 
 // Same-origin requests carry the NextAuth session cookie, which the server
 // verifies — no Authorization header needed. Kept as a no-op so existing call
@@ -10,7 +11,7 @@ async function authHeader(): Promise<Record<string, string>> {
   return {}
 }
 
-type Salesperson = { id: string; code: string; name: string | null; email: string | null }
+type Salesperson = { id: string; code: string; name: string | null; email: string | null; brand: string | null }
 type RecentLink = {
   id: string
   created_at: string
@@ -46,6 +47,20 @@ export default function PaymentLinkPage() {
   const [manageMsg, setManageMsg] = useState('')
 
   const [isAdmin, setIsAdmin] = useState(false)
+
+  // This one deployment serves both payment brands by host: show only that
+  // brand's salespeople, and title the tab for that brand.
+  const [hostBrand, setHostBrand] = useState<'bca' | 'transforma' | null>(null)
+  useEffect(() => {
+    const b = paymentBrandForHost(window.location.host)
+    setHostBrand(b)
+    if (b === 'bca') document.title = 'Customer Payments (BCA)'
+    else if (b === 'transforma') document.title = 'Customer Payments (Transforma)'
+  }, [])
+  const visibleSalespeople = useMemo(
+    () => (hostBrand ? salespeople.filter((s) => s.brand === hostBrand) : salespeople),
+    [salespeople, hostBrand]
+  )
 
   async function loadIsAdmin() {
     try {
@@ -197,14 +212,14 @@ export default function PaymentLinkPage() {
                 {showManage ? 'Close' : 'Manage salespeople'}
               </button>
             </div>
-            {salespeople.some((s) => (s.name || '').trim()) && (
+            {visibleSalespeople.some((s) => (s.name || '').trim()) && (
               <select
                 style={{ ...input, marginBottom: 8 }}
                 value={salespersonId}
                 onChange={(e) => pickSalesperson(e.target.value)}
               >
                 <option value="">— Choose salesperson —</option>
-                {salespeople.filter((s) => (s.name || '').trim()).map((s) => (
+                {visibleSalespeople.filter((s) => (s.name || '').trim()).map((s) => (
                   <option key={s.id} value={s.id}>{s.name}{s.email ? ` (${s.email})` : ''}</option>
                 ))}
               </select>

@@ -1,18 +1,23 @@
 'use client'
 
-import { STORE } from '@/lib/store'
+import { useEffect, useState } from 'react'
+import { paymentBrandForHost } from '@/lib/host'
 
 const BCA_LOGO = '/BoConcept-Logo.svg'
 const TRANSFORMA_LOGO = '/transforma-logo.svg'
 
-// Renders the brand mark(s) for this deployment: both BoConcept + Transforma on
-// the shared dashboard, or the single brand on each payment app.
+// Brand mark(s) by host: the BoConcept payment app shows BoConcept, the
+// Transforma payment app shows Transforma, and the shared dashboard shows both.
+// Rendered client-side (host is only known then) with nothing until mounted, so
+// a payment app never briefly flashes the other brand.
 export default function BrandLogos({ height = 28 }: { height?: number }) {
-  const logos = STORE === 'transforma'
-    ? [TRANSFORMA_LOGO]
-    : STORE === 'bca'
-      ? [BCA_LOGO]
-      : [BCA_LOGO, TRANSFORMA_LOGO]
+  const [host, setHost] = useState<string | null>(null)
+  useEffect(() => { setHost(window.location.host) }, [])
+
+  if (host === null) return <span style={{ display: 'inline-block', height }} aria-hidden />
+
+  const brand = paymentBrandForHost(host)
+  const logos = brand === 'transforma' ? [TRANSFORMA_LOGO] : brand === 'bca' ? [BCA_LOGO] : [BCA_LOGO, TRANSFORMA_LOGO]
 
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: Math.round(height * 0.55) }}>
