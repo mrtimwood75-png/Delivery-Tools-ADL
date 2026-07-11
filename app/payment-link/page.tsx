@@ -42,10 +42,6 @@ export default function PaymentLinkPage() {
   const [result, setResult] = useState<{ url: string; deliveryStatus: string | null } | null>(null)
   const [recent, setRecent] = useState<RecentLink[]>([])
 
-  const [showManage, setShowManage] = useState(false)
-  const [newSp, setNewSp] = useState({ code: '', name: '', email: '' })
-  const [manageMsg, setManageMsg] = useState('')
-
   const [isAdmin, setIsAdmin] = useState(false)
 
   // This one deployment serves both payment brands by host: show only that
@@ -85,26 +81,6 @@ export default function PaymentLinkPage() {
       const json = await res.json()
       if (res.ok) setSalespeople(json.salespeople || [])
     } catch { /* ignore */ }
-  }
-
-  async function addSalesperson() {
-    setManageMsg('')
-    const code = newSp.code.trim()
-    if (!code) return setManageMsg('Enter a salesperson code.')
-    const res = await fetch('/api/salespeople', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(await authHeader()) }, body: JSON.stringify({ code, name: newSp.name.trim(), email: newSp.email.trim() }) })
-    const json = await res.json()
-    if (!res.ok) return setManageMsg(json.error || 'Could not add salesperson.')
-    setNewSp({ code: '', name: '', email: '' })
-    setManageMsg('Saved.')
-    loadSalespeople()
-  }
-
-  async function saveSalesperson(id: string, patch: { name?: string; email?: string }) {
-    const res = await fetch('/api/salespeople', { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...(await authHeader()) }, body: JSON.stringify({ id, ...patch }) })
-    const json = await res.json()
-    if (!res.ok) return setManageMsg(json.error || 'Update failed.')
-    setManageMsg('Saved.')
-    loadSalespeople()
   }
 
   useEffect(() => {
@@ -201,16 +177,7 @@ export default function PaymentLinkPage() {
           </div>
 
           <div style={field}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-              <label style={{ ...label, marginBottom: 0 }}>Your return email (payment confirmation)</label>
-              <button
-                type="button"
-                onClick={() => { setShowManage((v) => !v); setManageMsg('') }}
-                style={{ background: 'none', border: 'none', padding: 0, minHeight: 0, color: '#1a1a1a', textDecoration: 'underline', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
-              >
-                {showManage ? 'Close' : 'Manage salespeople'}
-              </button>
-            </div>
+            <label style={label}>Your return email (payment confirmation)</label>
             {visibleSalespeople.some((s) => (s.name || '').trim()) && (
               <select
                 style={{ ...input, marginBottom: 8 }}
@@ -224,26 +191,6 @@ export default function PaymentLinkPage() {
               </select>
             )}
             <input style={input} value={salespersonEmail} onChange={(e) => setSalespersonEmail(e.target.value)} placeholder="you@boconcept.com.au" type="email" />
-
-            {showManage && (
-              <div style={{ marginTop: 12, border: '1px solid #e3e1dd', borderRadius: 10, padding: 14, background: '#faf9f7' }}>
-                <div style={{ fontSize: 12, color: '#6b6b6b', marginBottom: 10 }}>Add or edit salespeople. This list is shared with the delivery dashboard. Changes save when you click away from a field.</div>
-                {salespeople.map((s) => (
-                  <div key={s.id} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                    <input readOnly value={s.code} title="Code" style={{ ...input, flex: '0 0 64px', padding: '7px 9px', fontSize: 13, background: '#efece7' }} />
-                    <input defaultValue={s.name || ''} placeholder="Name" onBlur={(e) => saveSalesperson(s.id, { name: e.target.value })} style={{ ...input, flex: 1, padding: '7px 9px', fontSize: 13 }} />
-                    <input defaultValue={s.email || ''} placeholder="email@boconcept.com.au" type="email" onBlur={(e) => saveSalesperson(s.id, { email: e.target.value })} style={{ ...input, flex: 1.5, padding: '7px 9px', fontSize: 13 }} />
-                  </div>
-                ))}
-                <div style={{ display: 'flex', gap: 8, marginTop: 10, paddingTop: 10, borderTop: '1px solid #e3e1dd' }}>
-                  <input value={newSp.code} onChange={(e) => setNewSp({ ...newSp, code: e.target.value })} placeholder="Code" style={{ ...input, flex: '0 0 64px', padding: '7px 9px', fontSize: 13 }} />
-                  <input value={newSp.name} onChange={(e) => setNewSp({ ...newSp, name: e.target.value })} placeholder="Name" style={{ ...input, flex: 1, padding: '7px 9px', fontSize: 13 }} />
-                  <input value={newSp.email} onChange={(e) => setNewSp({ ...newSp, email: e.target.value })} placeholder="email@boconcept.com.au" type="email" style={{ ...input, flex: 1.5, padding: '7px 9px', fontSize: 13 }} />
-                  <button type="button" onClick={addSalesperson} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: '#1a1a1a', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', minHeight: 0, whiteSpace: 'nowrap' }}>Add</button>
-                </div>
-                {manageMsg && <div style={{ fontSize: 12, color: manageMsg === 'Saved.' ? '#1e4620' : '#b3261e', marginTop: 8 }}>{manageMsg}</div>}
-              </div>
-            )}
           </div>
 
           <div style={field}>
