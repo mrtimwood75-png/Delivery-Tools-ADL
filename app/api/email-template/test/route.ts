@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { sendEmail } from '@/lib/email'
+import { paymentBrandForHost } from '@/lib/host'
+import { brandConfig } from '@/lib/brand'
 
 // Sends the delivery template (with sample data) to a chosen address so the
 // email setup can be verified without marking a real order delivered.
@@ -26,7 +28,10 @@ export async function POST(request: NextRequest) {
     const subject = fill(tpl?.subject || 'Delivery email test')
     const text = `This is a TEST of the delivery email.\n\n${fill(tpl?.body || '')}`
 
-    await sendEmail({ to, subject, text })
+    // Send from the host's brand address (Transforma app -> TRANSFORMA_EMAIL_FROM,
+    // BoConcept/dashboard -> BCA_EMAIL_FROM), matching the real delivery emails.
+    const brand = paymentBrandForHost(request.headers.get('host')) || 'bca'
+    await sendEmail({ to, subject, text, from: brandConfig(brand).emailFrom || undefined })
     return NextResponse.json({ ok: true, sentTo: to })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Test email failed.' }, { status: 500 })
