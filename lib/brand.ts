@@ -36,7 +36,7 @@ function env(...names: string[]): string {
 
 const PREFIX: Record<Brand, string> = { bca: 'BCA', transforma: 'TRANSFORMA' }
 const DEFAULT_NAME: Record<Brand, string> = { bca: 'BoConcept Adelaide', transforma: 'Transforma' }
-export const BRAND_LOGO: Record<Brand, string> = { bca: '/BoConcept-Logo.svg', transforma: '/transforma-logo.svg' }
+export const BRAND_LOGO: Record<Brand, string> = { bca: '/BoConcept-Logo.svg', transforma: '/transforma-logo.png' }
 
 // Per-brand env (e.g. BCA_STRIPE_SECRET_KEY) with a fall back to the legacy
 // single-value names, so a single-brand payment deployment can use either.

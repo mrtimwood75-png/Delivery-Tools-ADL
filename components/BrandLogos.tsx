@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { paymentBrandForHost } from '@/lib/host'
 
 const BCA_LOGO = '/BoConcept-Logo.svg'
-const TRANSFORMA_LOGO = '/transforma-logo.svg'
+const TRANSFORMA_LOGO = '/transforma-logo.png'
 
 // Brand mark(s) by host: the BoConcept payment app shows BoConcept, the
 // Transforma payment app shows Transforma, and the shared dashboard shows both.
