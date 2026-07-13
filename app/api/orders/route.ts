@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
   const view = new URL(request.url).searchParams.get('view') === 'archived' ? 'archived' : 'active'
   let query = supabaseAdmin
     .from('delivery_orders')
-    .select('id, created_at, import_date, imported_at, order_number, customer_id, payment_status, order_status, ready_status, goods_ready_date, goods_in_date, delivery_date, stripe_link, stripe_link_expires_at, payment_due, sms_status, date_sent, order_notes, archived_at, salesperson, source, delivery_confirmation')
+    .select('id, created_at, import_date, imported_at, order_number, customer_id, payment_status, order_status, ready_status, goods_ready_date, goods_in_date, delivery_date, stripe_link, stripe_link_expires_at, payment_due, sms_status, date_sent, order_notes, archived_at, salesperson, source, delivery_confirmation, service_time')
     .order('imported_at', { ascending: false })
     .order('order_number', { ascending: true })
     .limit(500)
@@ -145,6 +145,7 @@ export async function POST(request: NextRequest) {
         goods_ready_date: cleanText(body.goods_ready_date) || null,
         delivery_date: cleanText(body.delivery_date) || null,
         order_notes: cleanText(body.order_notes) || null,
+        service_time: numericValue(body.service_time, 0),
         sms_status: ''
       }, { onConflict: 'order_number' })
       .select('id, order_number')
@@ -230,6 +231,10 @@ export async function PATCH(request: NextRequest) {
       if (!Number.isFinite(paymentDue)) return NextResponse.json({ error: 'Invalid payment amount.' }, { status: 400 })
       orderUpdate.payment_due = paymentDue
       orderUpdate.payment_status = paymentDue > 0 ? 'Unpaid' : 'Paid'
+    }
+
+    if ('service_time' in body) {
+      orderUpdate.service_time = Math.max(0, Math.round(Number(body.service_time) || 0))
     }
 
     if (Object.keys(orderUpdate).length) {

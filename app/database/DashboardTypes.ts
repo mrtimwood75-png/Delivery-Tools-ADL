@@ -31,6 +31,7 @@ export type Order = {
   stripe_link: string | null
   stripe_link_expires_at?: string | null
   payment_due: number
+  service_time?: number | null
   sms_status: string | null
   date_sent: string | null
   order_notes?: string | null

@@ -42,6 +42,7 @@ type OrderRow = {
   id: string
   order_number: string
   payment_due: number | null
+  service_time: number | null
   salesperson: string | null
   order_notes: string | null
   delivery_date: string | null
@@ -90,7 +91,7 @@ function buildPayload(order: OrderRow): BuiltPayload {
     destinationAddress,
     recipientName,
     recipientPhone: clean(c?.phone) || null,
-    serviceTime: '0',
+    serviceTime: String(Math.max(0, Math.round(Number(order.service_time || 0)))),
     amountDue: Number(order.payment_due || 0),
     tag1: clean(order.order_notes) || null,
     tag4: clean(order.salesperson) || null,
@@ -202,7 +203,7 @@ export async function pushOrdersToWodely(ids: string[]): Promise<WodelyPushResul
 
   const { data, error } = await supabaseAdmin
     .from('delivery_orders')
-    .select('id, order_number, payment_due, salesperson, order_notes, delivery_date, source, customers(name, phone, address, street_address, suburb, state, postcode), delivery_order_items(product_code, product_name, quantity)')
+    .select('id, order_number, payment_due, service_time, salesperson, order_notes, delivery_date, source, customers(name, phone, address, street_address, suburb, state, postcode), delivery_order_items(product_code, product_name, quantity)')
     .in('id', ids)
   if (error) throw new Error(error.message)
 
