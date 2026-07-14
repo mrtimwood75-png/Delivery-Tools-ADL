@@ -55,11 +55,14 @@ export default function PaymentLinkPage() {
   // brand's salespeople, and title the tab for that brand.
   const [hostBrand, setHostBrand] = useState<'bca' | 'transforma' | null>(null)
   useEffect(() => {
-    const b = paymentBrandForHost(window.location.host)
-    setHostBrand(b)
-    const name = portalNameFor(b)
-    if (name) document.title = name
+    setHostBrand(paymentBrandForHost(window.location.host))
   }, [])
+  // Set the tab title in its own effect (after hostBrand is in state and the
+  // page has hydrated) so it wins over the layout's metadata <title>.
+  useEffect(() => {
+    const name = portalNameFor(hostBrand)
+    if (name) document.title = name
+  }, [hostBrand])
   const visibleSalespeople = useMemo(
     () => (hostBrand ? salespeople.filter((s) => s.brand === hostBrand) : salespeople),
     [salespeople, hostBrand]
