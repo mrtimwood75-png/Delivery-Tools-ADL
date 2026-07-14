@@ -145,7 +145,7 @@ export async function POST(request: NextRequest) {
         goods_ready_date: cleanText(body.goods_ready_date) || null,
         delivery_date: cleanText(body.delivery_date) || null,
         order_notes: cleanText(body.order_notes) || null,
-        source: cleanText(body.source) || null,
+        source: cleanText(body.source) || 'bca',
         service_time: numericValue(body.service_time, 0),
         sms_status: ''
       }, { onConflict: 'order_number' })
