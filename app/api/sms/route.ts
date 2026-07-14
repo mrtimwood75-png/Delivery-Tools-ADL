@@ -29,10 +29,15 @@ export async function POST(request: NextRequest) {
     const single = orderIds.length === 1
 
     if (!templateText) return NextResponse.json({ error: 'Message window is blank.' }, { status: 400 })
-    if (!single && (audience === 'Zero balance only' || audience === 'Both') && templateText.includes('{stripe_checkout_url}')) {
-      return NextResponse.json({ error: 'Message can send to zero-balance rows but contains stripe_checkout_url.' }, { status: 400 })
-    }
     if (!orderIds.length && !orderNumbers.length) return NextResponse.json({ error: 'No recipients selected.' }, { status: 400 })
+
+    // A template carrying a checkout link can only sensibly go to rows that owe
+    // money — never text a payment link to a zero-balance customer. Rather than
+    // reject the whole batch (which blocked every bulk payment-reminder send,
+    // since all templates are audience "Both"), quietly narrow a bulk send to
+    // balance-only recipients and let the zero-balance rows fall through.
+    const hasStripeUrl = templateText.includes('{stripe_checkout_url}')
+    const effectiveAudience = hasStripeUrl && audience !== 'Balance only' ? 'Balance only' : audience
 
     let query = supabaseAdmin
       .from('delivery_orders')
@@ -71,7 +76,7 @@ export async function POST(request: NextRequest) {
       const link = String(order.stripe_link || '').trim()
       const priorSms = String(order.sms_status || '')
 
-      if (!single && !templateAudienceMatches(amount, audience)) continue
+      if (!single && !templateAudienceMatches(amount, effectiveAudience)) continue
       if (!mobile) continue
       if (!resend && priorSms.startsWith('Sent')) continue
 
