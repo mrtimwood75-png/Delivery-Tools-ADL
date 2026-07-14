@@ -247,8 +247,8 @@ export async function pushOrdersToWodely(ids: string[]): Promise<WodelyPushResul
     }
   }
 
-  // Archive every order that is now in Wodely (freshly created, or skipped
-  // because it was already there) so it drops out of the active job list.
+  // Mark every order that is now in Wodely (freshly created, or skipped because
+  // it was already there) as exported so it moves to the Exported tab.
   const archivedIds: string[] = []
   for (const r of results) {
     if (r.status !== 'created' && r.status !== 'skipped') continue
@@ -258,10 +258,10 @@ export async function pushOrdersToWodely(ids: string[]): Promise<WodelyPushResul
   if (archivedIds.length) {
     const { error: archiveError } = await supabaseAdmin
       .from('delivery_orders')
-      .update({ archived_at: new Date().toISOString() })
+      .update({ exported_at: new Date().toISOString() })
       .in('id', archivedIds)
-      .is('archived_at', null)
-    if (archiveError) throw new Error(`Pushed to Wodely but could not archive: ${archiveError.message}`)
+      .is('exported_at', null)
+    if (archiveError) throw new Error(`Pushed to Wodely but could not mark exported: ${archiveError.message}`)
   }
 
   return {

@@ -64,6 +64,9 @@ export async function POST(request: NextRequest) {
 
     let sent = 0
     let failed = 0
+    let skippedPaid = 0
+    let skippedNoMobile = 0
+    let skippedSent = 0
     type LogRow = { customer_id: string | null; order_id: string; direction: string; phone: string; body: string; status: string; provider_message_id: string | null; template_id: string | null; sent_by: string | null; error: string | null; purpose: string | null }
     const logRows: LogRow[] = []
     const sentOrderIds: string[] = []
@@ -76,9 +79,9 @@ export async function POST(request: NextRequest) {
       const link = String(order.stripe_link || '').trim()
       const priorSms = String(order.sms_status || '')
 
-      if (!single && !templateAudienceMatches(amount, effectiveAudience)) continue
-      if (!mobile) continue
-      if (!resend && priorSms.startsWith('Sent')) continue
+      if (!single && !templateAudienceMatches(amount, effectiveAudience)) { skippedPaid += 1; continue }
+      if (!mobile) { skippedNoMobile += 1; continue }
+      if (!resend && priorSms.startsWith('Sent')) { skippedSent += 1; continue }
 
       if (!single && amount > 0 && !link && templateText.includes('{stripe_checkout_url}')) {
         await supabaseAdmin.from('delivery_orders').update({ sms_status: 'Failed (Missing Stripe link)' }).eq('id', order.id)
@@ -118,7 +121,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ sent, failed })
+    return NextResponse.json({ sent, failed, skippedPaid, skippedNoMobile, skippedSent })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'SMS sending failed.' }, { status: 500 })
   }

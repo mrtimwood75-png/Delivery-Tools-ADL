@@ -20,14 +20,19 @@ function numericValue(value: unknown, fallback = 0) {
 }
 
 export async function GET(request: NextRequest) {
-  const view = new URL(request.url).searchParams.get('view') === 'archived' ? 'archived' : 'active'
+  const viewParam = new URL(request.url).searchParams.get('view')
+  const view = viewParam === 'archived' ? 'archived' : viewParam === 'exported' ? 'exported' : 'active'
   let query = supabaseAdmin
     .from('delivery_orders')
-    .select('id, created_at, import_date, imported_at, order_number, customer_id, payment_status, order_status, ready_status, goods_ready_date, goods_in_date, delivery_date, stripe_link, stripe_link_expires_at, payment_due, sms_status, date_sent, order_notes, archived_at, salesperson, source, delivery_confirmation, service_time')
+    .select('id, created_at, import_date, imported_at, order_number, customer_id, payment_status, order_status, ready_status, goods_ready_date, goods_in_date, delivery_date, stripe_link, stripe_link_expires_at, payment_due, sms_status, date_sent, order_notes, archived_at, exported_at, salesperson, source, delivery_confirmation, service_time')
     .order('imported_at', { ascending: false })
     .order('order_number', { ascending: true })
     .limit(500)
-  query = view === 'archived' ? query.not('archived_at', 'is', null) : query.is('archived_at', null)
+  // Active = not archived and not exported; Exported = pushed to Wodely, awaiting
+  // delivery (moves to Archived once Delivered); Archived = delivered/cancelled/etc.
+  if (view === 'archived') query = query.not('archived_at', 'is', null)
+  else if (view === 'exported') query = query.not('exported_at', 'is', null).is('archived_at', null)
+  else query = query.is('archived_at', null).is('exported_at', null)
   const { data: orderRows, error: orderError } = await query
 
   if (orderError) return NextResponse.json({ error: orderError.message }, { status: 500 })
@@ -236,6 +241,11 @@ export async function PATCH(request: NextRequest) {
 
     if ('service_time' in body) {
       orderUpdate.service_time = Math.max(0, Math.round(Number(body.service_time) || 0))
+    }
+
+    // source is NOT NULL (default 'bca'), so a blank value falls back rather than nulling.
+    if ('source' in body) {
+      orderUpdate.source = cleanText(body.source) || 'bca'
     }
 
     if (Object.keys(orderUpdate).length) {

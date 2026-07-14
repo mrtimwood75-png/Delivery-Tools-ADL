@@ -36,6 +36,7 @@ export type Order = {
   date_sent: string | null
   order_notes?: string | null
   archived_at?: string | null
+  exported_at?: string | null
   salesperson?: string | null
   source?: string | null
   delivery_confirmation?: string | null
