@@ -27,6 +27,13 @@ type RecentLink = {
 
 const money = (n: number) => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(Number(n || 0))
 
+// Per-brand name for the tab title and page heading, from the host brand.
+function portalNameFor(brand: 'bca' | 'transforma' | null): string {
+  return brand === 'transforma' ? 'Transforma Payments Portal'
+    : brand === 'bca' ? 'BoConcept Adelaide Payments Portal'
+      : ''
+}
+
 export default function PaymentLinkPage() {
   const [customerName, setCustomerName] = useState('')
   const [orderNumber, setOrderNumber] = useState('')
@@ -50,8 +57,8 @@ export default function PaymentLinkPage() {
   useEffect(() => {
     const b = paymentBrandForHost(window.location.host)
     setHostBrand(b)
-    if (b === 'bca') document.title = 'Customer Payments (BCA)'
-    else if (b === 'transforma') document.title = 'Customer Payments (Transforma)'
+    const name = portalNameFor(b)
+    if (name) document.title = name
   }, [])
   const visibleSalespeople = useMemo(
     () => (hostBrand ? salespeople.filter((s) => s.brand === hostBrand) : salespeople),
@@ -84,7 +91,6 @@ export default function PaymentLinkPage() {
   }
 
   useEffect(() => {
-    document.title = 'BoConcept Payments'
     loadSalespeople()
     loadRecent()
     loadIsAdmin()
@@ -153,7 +159,7 @@ export default function PaymentLinkPage() {
           )}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <div style={{ marginBottom: 18 }}><BrandLogos height={26} /></div>
-          <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>Send a Payment Link</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>{portalNameFor(hostBrand) || 'Send a Payment Link'}</h1>
           <p style={{ color: '#6b6b6b', fontSize: 14, marginTop: 8 }}>
             Create a secure card-payment link and send it to your customer. You&apos;ll get an email when it&apos;s paid.
           </p>
