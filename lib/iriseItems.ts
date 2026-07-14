@@ -54,16 +54,30 @@ function parseSuburbStatePostcode(value: string) {
   }
 }
 
+// A customer's details line is the "Australia … Sales order os-… Name …" row.
+// It's the reliable anchor for a block; the address above it may span several
+// lines (or be absent).
+function detailsLineOffset(lines: string[], start: number, maxLook = 10) {
+  for (let k = 1; k <= maxLook && start + k < lines.length; k += 1) {
+    const raw = lines[start + k] || ''
+    if (/\bsales order\b/i.test(raw) && /australia/i.test(raw)) return k
+  }
+  return -1
+}
+
+function isPhoneish(value: string) {
+  const digits = String(value || '').replace(/\D/g, '')
+  return digits.length >= 8 && digits.length <= 12
+}
+
+// A block starts on the address header (`mobile \t name \t …`) as long as a
+// details line follows within a few lines. We no longer require the suburb to
+// sit immediately under the header — that dropped multi-line and address-less
+// customers, merging them into the previous order (and giving them its address).
 function isCustomerStart(lines: string[], index: number) {
-  const parts = lines[index].split('\t').map((part) => cleanText(part))
-  const nextLine = cleanText(lines[index + 1] || '')
-  const followingLine = cleanText(lines[index + 2] || '')
-  return parts.length >= 3
-    && Boolean(parts[0])
-    && Boolean(parts[1])
-    && Boolean(parts[2])
-    && /\b[A-Z]{2,3}\s+\d{4}\b/i.test(nextLine)
-    && followingLine.toLowerCase().includes('australia')
+  const parts = (lines[index] || '').split('\t').map((part) => cleanText(part))
+  if (parts.length < 3 || !isPhoneish(parts[0]) || !parts[1]) return false
+  return detailsLineOffset(lines, index) !== -1
 }
 
 function recordSections(fileText: string) {
@@ -74,14 +88,45 @@ function recordSections(fileText: string) {
 
 function headerDetails(blockLines: string[]) {
   const headerParts = (blockLines[0] || '').split('\t').map((part) => cleanText(part))
-  const parsed = parseSuburbStatePostcode(blockLines[1] || '')
+  const detailsIdx = detailsLineOffset(blockLines, 0)
+  const upper = detailsIdx === -1 ? blockLines.length : detailsIdx
+
+  // Address = the header's 3rd field plus every line up to the "Australia …"
+  // details row (blank lines and lone "." placeholders skipped).
+  const addrLines: string[] = []
+  const firstField = cleanText(headerParts[2] || '')
+  if (firstField && firstField !== '.') addrLines.push(firstField)
+  for (let k = 1; k < upper; k += 1) {
+    const t = cleanText(blockLines[k] || '')
+    if (t && t !== '.') addrLines.push(t)
+  }
+
+  // The last "Suburb STATE 1234" line is the locality; earlier lines are street.
+  let suburb = '', state = '', postcode = ''
+  let streetLines = addrLines
+  for (let k = addrLines.length - 1; k >= 0; k -= 1) {
+    const parsed = parseSuburbStatePostcode(addrLines[k])
+    if (parsed.state && parsed.postcode) {
+      suburb = parsed.suburb
+      state = parsed.state
+      postcode = parsed.postcode
+      streetLines = addrLines.slice(0, k)
+      break
+    }
+  }
+  // Fallback: a trailing bare 4-digit line is a postcode with no suburb/state.
+  if (!postcode && streetLines.length && /^\d{4}$/.test(streetLines[streetLines.length - 1])) {
+    postcode = streetLines[streetLines.length - 1]
+    streetLines = streetLines.slice(0, -1)
+  }
+
   return {
     mobile: headerParts[0] || '',
     customerName: headerParts[1] || '',
-    streetAddress: headerParts[2] || '',
-    suburb: parsed.suburb,
-    state: parsed.state,
-    postcode: parsed.postcode
+    streetAddress: streetLines.join(', '),
+    suburb,
+    state,
+    postcode
   }
 }
 
