@@ -28,7 +28,7 @@ export default function PaymentSuccessPage() {
     <div style={{ minHeight: '100vh', background: '#f4f3f1', fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif', color: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
       <div style={{ background: '#fff', borderRadius: 16, padding: '44px 36px', maxWidth: 460, width: '100%', textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,.08)' }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        {merchant?.logo ? <img src={merchant.logo} alt={merchant.name} style={{ height: 48, marginBottom: 28 }} /> : <div style={{ height: 48, marginBottom: 28 }} />}
+        {merchant?.logo ? <img src={merchant.logo} alt={merchant.name} style={{ maxWidth: 'min(260px, 100%)', maxHeight: 48, width: 'auto', height: 'auto', marginBottom: 28 }} /> : <div style={{ height: 48, marginBottom: 28 }} />}
 
         <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#edf7ed', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
           <span style={{ fontSize: 32, color: '#1e7d32', lineHeight: 1 }}>✓</span>
