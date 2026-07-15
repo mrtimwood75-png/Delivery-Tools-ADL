@@ -199,7 +199,6 @@ export default function PaymentLinkPage() {
                 ))}
               </select>
             )}
-            <input style={input} value={salespersonEmail} onChange={(e) => setSalespersonEmail(e.target.value)} placeholder="you@boconcept.com.au" type="email" />
           </div>
 
           <div style={field}>
@@ -225,17 +224,7 @@ export default function PaymentLinkPage() {
                   ? 'Link created — sending had a problem'
                   : 'Link created and sent ✓'}
               </div>
-              {result.deliveryStatus && <div style={{ fontSize: 13, color: '#3a3a3a', marginBottom: 8 }}>{result.deliveryStatus}</div>}
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <input readOnly value={result.url} style={{ ...input, fontSize: 13, padding: '8px 10px' }} />
-                <button
-                  type="button"
-                  onClick={() => navigator.clipboard?.writeText(result.url)}
-                  style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid #1a1a1a', background: '#fff', color: '#1a1a1a', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
-                >
-                  Copy
-                </button>
-              </div>
+              {result.deliveryStatus && <div style={{ fontSize: 13, color: '#3a3a3a' }}>{result.deliveryStatus}</div>}
             </div>
           )}
         </div>
