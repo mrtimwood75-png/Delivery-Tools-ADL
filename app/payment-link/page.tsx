@@ -11,7 +11,7 @@ async function authHeader(): Promise<Record<string, string>> {
   return {}
 }
 
-type Salesperson = { id: string; code: string; name: string | null; email: string | null; brand: string | null }
+type Salesperson = { id: string; code: string; name: string | null; email: string | null; brand: string | null; exclude_from_payment_app?: boolean }
 type RecentLink = {
   id: string
   created_at: string
@@ -63,8 +63,10 @@ export default function PaymentLinkPage() {
     const name = portalNameFor(hostBrand)
     if (name) document.title = name
   }, [hostBrand])
+  // Show only this host's brand, and never anyone flagged "exclude from payment
+  // app" (e.g. ex-staff whose email now points at a manager).
   const visibleSalespeople = useMemo(
-    () => (hostBrand ? salespeople.filter((s) => s.brand === hostBrand) : salespeople),
+    () => (hostBrand ? salespeople.filter((s) => s.brand === hostBrand) : salespeople).filter((s) => !s.exclude_from_payment_app),
     [salespeople, hostBrand]
   )
 

@@ -10,7 +10,7 @@ function cleanBrand(value: unknown): string | null {
 export async function GET() {
   const { data, error } = await supabaseAdmin
     .from('salespeople')
-    .select('id, code, name, email, brand')
+    .select('id, code, name, email, brand, exclude_from_payment_app')
     .order('code', { ascending: true })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -22,11 +22,11 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const code = String(body.code || '').trim()
     if (!code) return NextResponse.json({ error: 'Salesperson code is required.' }, { status: 400 })
-    const payload = { code, name: String(body.name || '').trim() || null, email: String(body.email || '').trim().toLowerCase() || null, brand: cleanBrand(body.brand), updated_at: new Date().toISOString() }
+    const payload = { code, name: String(body.name || '').trim() || null, email: String(body.email || '').trim().toLowerCase() || null, brand: cleanBrand(body.brand), exclude_from_payment_app: !!body.exclude_from_payment_app, updated_at: new Date().toISOString() }
     const { data, error } = await supabaseAdmin
       .from('salespeople')
       .upsert(payload, { onConflict: 'code' })
-      .select('id, code, name, email, brand')
+      .select('id, code, name, email, brand, exclude_from_payment_app')
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -45,12 +45,13 @@ export async function PATCH(request: NextRequest) {
     if ('name' in body) update.name = String(body.name || '').trim() || null
     if ('email' in body) update.email = String(body.email || '').trim().toLowerCase() || null
     if ('brand' in body) update.brand = cleanBrand(body.brand)
+    if ('exclude_from_payment_app' in body) update.exclude_from_payment_app = !!body.exclude_from_payment_app
 
     const { data, error } = await supabaseAdmin
       .from('salespeople')
       .update(update)
       .eq('id', id)
-      .select('id, code, name, email, brand')
+      .select('id, code, name, email, brand, exclude_from_payment_app')
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })

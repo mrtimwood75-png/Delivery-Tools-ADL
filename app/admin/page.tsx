@@ -42,7 +42,7 @@ export default function AdminTemplatesPage() {
   const [newUserDash, setNewUserDash] = useState(true)
   const [newUserPay, setNewUserPay] = useState(false)
   const [payTpl, setPayTpl] = useState({ sms: '', emailSubject: '', emailBody: '', successSms: '' })
-  const [salespeople, setSalespeople] = useState<{ id: string; code: string; name: string | null; email: string | null; brand: string | null }[]>([])
+  const [salespeople, setSalespeople] = useState<{ id: string; code: string; name: string | null; email: string | null; brand: string | null; exclude_from_payment_app?: boolean }[]>([])
   const [newSalesCode, setNewSalesCode] = useState('')
   const [newSalesBrand, setNewSalesBrand] = useState('transforma')
   const [merchant, setMerchant] = useState<Record<string, Record<string, string>>>({ bca: {}, transforma: {} })
@@ -170,7 +170,7 @@ export default function AdminTemplatesPage() {
     setSalespeople(result.salespeople || [])
   }
 
-  async function updateSalesperson(id: string, patch: { name?: string; email?: string; brand?: string | null }) {
+  async function updateSalesperson(id: string, patch: { name?: string; email?: string; brand?: string | null; exclude_from_payment_app?: boolean }) {
     const response = await fetch('/api/salespeople', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, ...patch }) })
     const result = await response.json()
     if (!response.ok) return setStatus(result.error || 'Salesperson update failed')
@@ -528,14 +528,15 @@ export default function AdminTemplatesPage() {
                 <h3 style={{ margin: '8px 0 6px', fontSize: 15 }}>{group.label} <span className="muted" style={{ fontWeight: 400 }}>({rows.length})</span></h3>
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead><tr>{['Code', 'Name', 'Email', 'Store', ''].map((heading) => <th key={heading} style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid var(--border)' }}>{heading}</th>)}</tr></thead>
+                    <thead><tr>{['Code', 'Name', 'Email', 'Store', 'Exclude from payment app', ''].map((heading) => <th key={heading} style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid var(--border)' }}>{heading}</th>)}</tr></thead>
                     <tbody>{rows.length ? rows.map((sp) => <tr key={sp.id}>
                       <td style={{ padding: 8, borderBottom: '1px solid var(--border)', fontWeight: 700 }}>{sp.code}</td>
                       <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}><input defaultValue={sp.name || ''} placeholder="Full name (optional)" onBlur={(event) => updateSalesperson(sp.id, { name: event.target.value })} /></td>
                       <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}><input type="email" defaultValue={sp.email || ''} placeholder="name@boconcept.com.au" onBlur={(event) => updateSalesperson(sp.id, { email: event.target.value })} /></td>
                       <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}><select value={sp.brand || ''} onChange={(event) => updateSalesperson(sp.id, { brand: event.target.value || null })}><option value="">— Unassigned —</option><option value="transforma">Transforma</option><option value="bca">BoConcept Adelaide</option></select></td>
+                      <td style={{ padding: 8, borderBottom: '1px solid var(--border)', textAlign: 'center' }}><input type="checkbox" checked={!!sp.exclude_from_payment_app} onChange={(event) => updateSalesperson(sp.id, { exclude_from_payment_app: event.target.checked })} title="Hide from the payment app salesperson list (delivery emails still use this row's email)" /></td>
                       <td style={{ padding: 8, borderBottom: '1px solid var(--border)' }}><button type="button" className="btn-danger" onClick={() => deleteSalesperson(sp.id, sp.code)}>Delete</button></td>
-                    </tr>) : <tr><td colSpan={5} style={{ padding: 8 }} className="muted">None yet.</td></tr>}</tbody>
+                    </tr>) : <tr><td colSpan={6} style={{ padding: 8 }} className="muted">None yet.</td></tr>}</tbody>
                   </table>
                 </div>
               </div>
