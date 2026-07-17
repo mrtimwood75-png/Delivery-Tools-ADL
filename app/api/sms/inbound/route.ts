@@ -102,7 +102,11 @@ async function handleReply(reply: AnyRecord) {
   }
   const normalizedPhone = normalizeMobileAu(source)
   const dateRaw = pick(reply, ['date_received', 'timestamp', 'received_timestamp', 'date'])
-  const date = dateRaw && !Number.isNaN(new Date(dateRaw).getTime()) ? new Date(dateRaw).toISOString() : new Date().toISOString()
+  // A reply can't have arrived in the future: clamp the provider timestamp to now
+  // so a skewed provider clock can't sort the reply after our later messages.
+  const now = Date.now()
+  const parsed = dateRaw ? new Date(dateRaw).getTime() : NaN
+  const date = new Date(Number.isNaN(parsed) ? now : Math.min(parsed, now)).toISOString()
 
   const { customer_id, order_id, template_id } = await findCustomer(normalizedPhone, originalMessageId)
 

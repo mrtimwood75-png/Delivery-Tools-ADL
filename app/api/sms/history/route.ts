@@ -23,7 +23,12 @@ export async function GET(request: NextRequest) {
       .from('sms_messages')
       .select('id, created_at, direction, phone, body, status, provider_message_id, order_id, error')
       .eq('customer_id', customerId)
+      // Chronological, with deterministic tie-breaks: on an equal timestamp show
+      // the customer's inbound before our outbound reply ('inbound' < 'outbound'),
+      // then by id so repeated ties stay in a stable order.
       .order('created_at', { ascending: true })
+      .order('direction', { ascending: true })
+      .order('id', { ascending: true })
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ messages: data || [], customerId })
