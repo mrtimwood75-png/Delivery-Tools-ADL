@@ -161,13 +161,44 @@ function calculateOrderTotalFromLines(lines: OptionsRecord[]): number {
   return Math.round(total * 100) / 100
 }
 
-function calculateCodAmount(header: OptionsRecord, lines: OptionsRecord[]): number {
-  // Balance to collect = order total minus what's recorded as paid. Use the
-  // authoritative header fields: the DRTRAN/DRHIST "PA" query over-counts (it
-  // also sums the sale transaction). COD never goes below zero.
+function calculateCodAmount(header: OptionsRecord, lines: OptionsRecord[], paidFromTransactions = 0): number {
+  // Balance to collect = order total minus what has actually been paid. Payments
+  // are NOT stored on the sales-order header (its PAID/TEMPPAID come back empty);
+  // per the Options docs they live in DRTRAN/DRHIST as TYPE="PA" rows keyed by
+  // SALESORDER (see fetchOrderPaid). Prefer that; only fall back to the header
+  // fields if no payment rows were found. COD never goes below zero.
   const orderTotal = toFloat(header.TOTAMOUNT) || calculateOrderTotalFromLines(lines)
-  const paid = toFloat(header.PAID) + toFloat(header.TEMPPAID)
+  const paid = paidFromTransactions > 0 ? paidFromTransactions : (toFloat(header.PAID) + toFloat(header.TEMPPAID))
   return Math.max(Math.round((orderTotal - paid) * 100) / 100, 0)
+}
+
+// Sum payments recorded against a sales order. Options records each payment as a
+// TYPE="PA" row (TOTAMOUNT = amount inc GST) in DRTRAN (current) and DRHIST
+// (archived), linked to the order by the SALESORDER field. Matching on
+// SALESORDER (not the customer account) avoids the old over-count where every
+// payment for a customer was applied to each of their orders.
+async function fetchOrderPaid(orderNo: string): Promise<number> {
+  const clientKey = (process.env.OPTIONS_CLIENT_KEY || '').trim()
+  const order = clean(orderNo)
+  if (!order) return 0
+  let total = 0
+  for (const table of ['DRTRAN', 'DRHIST']) {
+    try {
+      const xml = buildRequestXml(
+        clientKey,
+        table,
+        ['SALESORDER', 'TYPE', 'TOTAMOUNT'],
+        [['SALESORDER', 'equals', order], ['TYPE', 'equals', 'PA']],
+        { sortBy: 'SALESORDER', maxRecords: 500 }
+      )
+      const recs = parseTableRecords(await postOptionsXml(xml), table)
+      for (const r of recs) {
+        // Re-check TYPE in case the API ignores the condition.
+        if (clean(r.TYPE).toUpperCase() === 'PA' && clean(r.SALESORDER) === order) total += toFloat(r.TOTAMOUNT)
+      }
+    } catch { /* a missing history table just means no archived payments */ }
+  }
+  return Math.round(total * 100) / 100
 }
 
 function extractPhoneFromText(...values: unknown[]): string {
@@ -373,7 +404,7 @@ async function fetchContact(accde: string, contactName = ''): Promise<OptionsRec
 // -----------------------
 // map one order -> one ImportRow
 // -----------------------
-function mapOrderToImportRow(orderNo: string, lines: OptionsRecord[], header: OptionsRecord, contact: OptionsRecord): ImportRow | null {
+function mapOrderToImportRow(orderNo: string, lines: OptionsRecord[], header: OptionsRecord, contact: OptionsRecord, paid = 0): ImportRow | null {
   if (!lines.length) return null
 
   // Import criterion: the order must have a booked delivery date (any line).
@@ -388,7 +419,7 @@ function mapOrderToImportRow(orderNo: string, lines: OptionsRecord[], header: Op
   })
   if (!keptLines.length) return null
 
-  const cod = calculateCodAmount(header, lines)
+  const cod = calculateCodAmount(header, lines, paid)
   const recipientName = toProperCase(clean(header.DELNAME) || clean(header.CUSTNAME))
   if (!recipientName) return null
 
@@ -457,7 +488,8 @@ export async function fetchTransformaRows(fromDate?: string): Promise<Transforma
       contactCache.set(contactKey, accde ? await fetchContact(accde, header.CONTACT) : {})
     }
 
-    const row = mapOrderToImportRow(orderNo, orderLines, header, contactCache.get(contactKey) || {})
+    const paid = await fetchOrderPaid(orderNo)
+    const row = mapOrderToImportRow(orderNo, orderLines, header, contactCache.get(contactKey) || {}, paid)
     if (row) rows.push(row)
   }
 
@@ -512,7 +544,8 @@ export async function fetchTransformaDebug(fromDate?: string) {
   const orderNo = clean(lines.find((l) => clean(l.ORDNO))?.ORDNO) || clean(lines[0].ORDNO)
   const orderLines = lines.filter((l) => clean(l.ORDNO) === orderNo)
   const header = await fetchHeader(orderNo)
-  const computedCod = calculateCodAmount(header, orderLines)
+  const paid = await fetchOrderPaid(orderNo)
+  const computedCod = calculateCodAmount(header, orderLines, paid)
 
   // Discover any suburb/state/postcode columns on the order header.
   const addressProbe = await probeFields('DRSOTR', 'ORDNO', orderNo, [
@@ -533,6 +566,7 @@ export async function fetchTransformaDebug(fromDate?: string) {
     firstLine: orderLines[0] || {},
     headerKeys: Object.keys(header),
     header,
+    paidFromTransactions: paid,
     computedCod,
     areaCode: clean(header.AREA),
     addressProbe,
