@@ -174,6 +174,44 @@ export async function sendOrderTemplate(orderId: string, tpl: { id: string; temp
   }
 }
 
+// Sends a free-form (non-template) SMS from a staff member to a customer or a
+// typed mobile number, then logs it to sms_messages tagged with `sentBy` (the
+// staff member's app_users id) so it shows in their private Messages inbox.
+// Sends through `brand`'s MessageMedia account (the host brand of the app the
+// staff member is using). Never throws — returns the outcome.
+export async function sendStaffSms(params: {
+  toPhone: string
+  body: string
+  brand?: Brand
+  customerId?: string | null
+  sentBy?: string | null
+}): Promise<{ ok: boolean; reason: string; messageId?: string }> {
+  const mobile = String(params.toPhone || '').trim()
+  const text = String(params.body || '').trim()
+  if (!mobile) return { ok: false, reason: 'No mobile number.' }
+  if (!text) return { ok: false, reason: 'Message is blank.' }
+
+  const base = {
+    customer_id: params.customerId || null,
+    order_id: null,
+    direction: 'outbound',
+    phone: normalizeMobileAu(mobile),
+    body: text,
+    template_id: null,
+    sent_by: params.sentBy || null,
+    purpose: null
+  }
+  try {
+    const messageId = await sendMessageMediaSms(mobile, text, params.brand)
+    await supabaseAdmin.from('sms_messages').insert({ ...base, status: 'sent', provider_message_id: messageId })
+    return { ok: true, reason: `sent (${messageId})`, messageId }
+  } catch (error) {
+    const errText = error instanceof Error ? error.message : 'send failed'
+    await supabaseAdmin.from('sms_messages').insert({ ...base, status: 'failed', provider_message_id: null, error: errText })
+    return { ok: false, reason: errText }
+  }
+}
+
 // Sends the active template tagged with `purpose` (e.g. delivery confirm/reject auto-replies).
 export async function sendAutoReply(orderId: string, purpose: string): Promise<{ ok: boolean; reason: string }> {
   const { data: tpl } = await supabaseAdmin

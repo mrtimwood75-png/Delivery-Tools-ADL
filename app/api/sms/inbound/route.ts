@@ -2,6 +2,49 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { normalizeMobileAu } from '@/lib/format'
 import { runReplyAutomations } from '@/lib/automations'
+import { sendEmail } from '@/lib/email'
+
+// Emails the staff member who owns this conversation (the last person to text
+// this customer/number, per sms_messages.sent_by) that a reply came in — if they
+// have the toggle on. Never throws: a missing/failed email must not stop the
+// webhook from storing the reply.
+async function notifyOwningStaff(customerId: string | null, phone: string, content: string, origin: string) {
+  try {
+    let ownerQuery = supabaseAdmin
+      .from('sms_messages')
+      .select('sent_by')
+      .eq('direction', 'outbound')
+      .not('sent_by', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+    ownerQuery = customerId ? ownerQuery.eq('customer_id', customerId) : ownerQuery.is('customer_id', null).eq('phone', phone)
+    const { data: owner } = await ownerQuery
+    const sentBy = owner?.[0]?.sent_by as string | undefined
+    if (!sentBy) return
+
+    const { data: staff } = await supabaseAdmin
+      .from('app_users')
+      .select('email, full_name, is_active, sms_notify_email')
+      .eq('id', sentBy)
+      .maybeSingle()
+    if (!staff || staff.is_active === false || staff.sms_notify_email === false || !staff.email) return
+
+    let who = phone || 'a customer'
+    if (customerId) {
+      const { data: customer } = await supabaseAdmin.from('customers').select('name').eq('id', customerId).maybeSingle()
+      if (customer?.name) who = customer.name as string
+    }
+
+    const link = `${origin.replace(/\/$/, '')}/messages`
+    await sendEmail({
+      to: staff.email as string,
+      subject: `New SMS reply from ${who}`,
+      text: `${who} replied:\n\n"${content}"\n\nOpen your messages to reply:\n${link}\n\n(You're getting this because you last texted this customer. Turn these off in Messages.)`
+    })
+  } catch (error) {
+    console.error('[sms-inbound] notify failed', error)
+  }
+}
 
 // MessageMedia inbound/delivery webhook. Payload field names vary by account
 // template, so we read tolerantly. Secure by setting SMS_WEBHOOK_SECRET and
@@ -77,7 +120,7 @@ async function findCustomer(normalizedPhone: string, originalMessageId: string):
   return { customer_id: null, order_id: null, template_id: null }
 }
 
-async function handleReply(reply: AnyRecord) {
+async function handleReply(reply: AnyRecord, origin: string) {
   const content = pick(reply, ['content', 'message', 'body', 'text'])
   const source = pick(reply, ['source_number', 'source', 'from', 'originator', 'sender', 'mobile'])
   // A real customer reply always has message text. Events with no content
@@ -161,6 +204,9 @@ async function handleReply(reply: AnyRecord) {
     provider_message_id: providerId,
     created_at: date
   })
+
+  // Let the staff member who owns this thread know a reply landed.
+  await notifyOwningStaff(customer_id, normalizedPhone || source, content, origin)
   return true
 }
 
@@ -188,6 +234,7 @@ export async function POST(request: NextRequest) {
 
   console.log('[sms-inbound] payload', JSON.stringify(body).slice(0, 800))
 
+  const origin = new URL(request.url).origin
   const root = (Array.isArray(body) ? { items: body } : body) as AnyRecord
   const replies = (Array.isArray(root.replies) ? root.replies : Array.isArray(root.items) ? root.items : []) as AnyRecord[]
   const deliveryReports = (Array.isArray(root.delivery_reports) ? root.delivery_reports : []) as AnyRecord[]
@@ -200,7 +247,7 @@ export async function POST(request: NextRequest) {
       // An item array may mix replies and delivery reports — route by shape.
       if (pick(reply, ['status', 'delivery_report_status', 'dsr_status']) && !pick(reply, ['content', 'message', 'body'])) {
         if (await handleDeliveryReport(reply)) receipts += 1
-      } else if (await handleReply(reply)) {
+      } else if (await handleReply(reply, origin)) {
         received += 1
       }
     }
@@ -212,7 +259,7 @@ export async function POST(request: NextRequest) {
     if (!replies.length && !deliveryReports.length && !Array.isArray(body)) {
       if (pick(root, ['status', 'delivery_report_status', 'dsr_status']) && !pick(root, ['content', 'message', 'body'])) {
         if (await handleDeliveryReport(root)) receipts += 1
-      } else if (await handleReply(root)) {
+      } else if (await handleReply(root, origin)) {
         received += 1
       }
     }

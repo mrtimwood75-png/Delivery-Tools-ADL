@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import BrandLogos from '@/components/BrandLogos'
+import PortalNav from '@/components/PortalNav'
 import { paymentBrandForHost } from '@/lib/host'
 
 // Same-origin requests carry the NextAuth session cookie, which the server
@@ -164,6 +165,7 @@ export default function PaymentLinkPage() {
           )}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <div style={{ marginBottom: 18 }}><BrandLogos height={26} /></div>
+          <PortalNav active="payments" />
           <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>{portalNameFor(hostBrand) || 'Send a Payment Link'}</h1>
           <p style={{ color: '#6b6b6b', fontSize: 14, marginTop: 8 }}>
             Create a secure card-payment link and send it to your customer. You&apos;ll get an email when it&apos;s paid.

@@ -14,6 +14,10 @@ create table if not exists public.app_users (
 alter table public.app_users
   add column if not exists store text;
 
+-- Per-staff toggle: email me when a customer replies in one of my SMS threads.
+alter table public.app_users
+  add column if not exists sms_notify_email boolean not null default true;
+
 create table if not exists public.customers (
   id uuid primary key default gen_random_uuid(),
   created_at timestamptz not null default now(),
@@ -182,6 +186,7 @@ create index if not exists sms_messages_order_id_idx on public.sms_messages (ord
 create index if not exists sms_messages_phone_idx on public.sms_messages (phone);
 create index if not exists sms_messages_provider_message_id_idx on public.sms_messages (provider_message_id);
 create index if not exists sms_messages_created_at_idx on public.sms_messages (created_at);
+create index if not exists sms_messages_sent_by_idx on public.sms_messages (sent_by);
 
 alter table public.sms_messages enable row level security;
 

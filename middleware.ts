@@ -48,6 +48,7 @@ function isPublicPage(pathname: string) {
 // admin page, the public customer pages, login and the account page.
 function allowedOnPaymentStore(pathname: string) {
   return pathname === '/payment-link'
+    || pathname === '/messages'
     || pathname === '/admin' || pathname.startsWith('/admin/')
     || pathname.startsWith('/pay/')
     || pathname === '/login'

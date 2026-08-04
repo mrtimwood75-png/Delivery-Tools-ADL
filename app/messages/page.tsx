@@ -1,0 +1,392 @@
+'use client'
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import BrandLogos from '@/components/BrandLogos'
+import PortalNav from '@/components/PortalNav'
+import { paymentBrandForHost } from '@/lib/host'
+
+type Conversation = {
+  key: string
+  customerId: string | null
+  phone: string | null
+  name: string
+  lastBody: string
+  lastDirection: string
+  lastAt: string
+  unread: number
+  unmatched: boolean
+}
+
+type ThreadMessage = {
+  id: string
+  created_at: string
+  direction: string
+  phone: string | null
+  body: string
+  status: string | null
+  error: string | null
+}
+
+type CustomerHit = { id: string; name: string; phone: string | null }
+
+function portalNameFor(brand: 'bca' | 'transforma' | null): string {
+  return brand === 'transforma' ? 'Transforma Messages'
+    : brand === 'bca' ? 'BoConcept Adelaide Messages'
+      : 'Messages'
+}
+
+function timeLabel(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const now = new Date()
+  const sameDay = d.toDateString() === now.toDateString()
+  return sameDay
+    ? d.toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit' })
+    : d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
+}
+
+export default function MessagesPage() {
+  const [conversations, setConversations] = useState<Conversation[]>([])
+  const [selected, setSelected] = useState<Conversation | null>(null)
+  const [messages, setMessages] = useState<ThreadMessage[]>([])
+  const [draft, setDraft] = useState('')
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState('')
+
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [notifyEmail, setNotifyEmail] = useState(true)
+  const [hostBrand, setHostBrand] = useState<'bca' | 'transforma' | null>(null)
+
+  // New-message composer state.
+  const [composing, setComposing] = useState(false)
+  const [search, setSearch] = useState('')
+  const [hits, setHits] = useState<CustomerHit[]>([])
+  const [typedNumber, setTypedNumber] = useState('')
+  const [newDraft, setNewDraft] = useState('')
+
+  const threadEndRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    setHostBrand(paymentBrandForHost(window.location.host))
+  }, [])
+  useEffect(() => {
+    document.title = portalNameFor(hostBrand)
+  }, [hostBrand])
+
+  const loadConversations = useCallback(async () => {
+    try {
+      const res = await fetch('/api/sms/conversations', { cache: 'no-store' })
+      const json = await res.json()
+      if (res.ok) setConversations(json.conversations || [])
+    } catch { /* ignore */ }
+  }, [])
+
+  const loadThread = useCallback(async (conv: Conversation) => {
+    try {
+      const qs = conv.customerId ? `customerId=${encodeURIComponent(conv.customerId)}` : `phone=${encodeURIComponent(conv.phone || '')}`
+      const res = await fetch(`/api/sms/thread?${qs}`, { cache: 'no-store' })
+      const json = await res.json()
+      if (res.ok) {
+        setMessages(json.messages || [])
+        // Opening clears unread server-side; reflect it locally too.
+        setConversations((prev) => prev.map((c) => (c.key === conv.key ? { ...c, unread: 0 } : c)))
+      } else {
+        setError(json.error || 'Could not load conversation.')
+      }
+    } catch { setError('Could not load conversation.') }
+  }, [])
+
+  async function loadMe() {
+    try {
+      const res = await fetch('/api/me', { cache: 'no-store' })
+      const me = await res.json()
+      if (res.ok) setIsAdmin(!!me.isAdmin)
+    } catch { /* ignore */ }
+    try {
+      const res = await fetch('/api/sms/notify-pref', { cache: 'no-store' })
+      const json = await res.json()
+      if (res.ok) setNotifyEmail(json.notifyEmail !== false)
+    } catch { /* ignore */ }
+  }
+
+  useEffect(() => {
+    loadConversations()
+    loadMe()
+  }, [loadConversations])
+
+  // Poll: refresh the list, and the open thread, so new replies appear.
+  useEffect(() => {
+    const id = setInterval(() => {
+      loadConversations()
+      if (selected) loadThread(selected)
+    }, 20000)
+    return () => clearInterval(id)
+  }, [selected, loadConversations, loadThread])
+
+  useEffect(() => {
+    threadEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  function openConversation(conv: Conversation) {
+    setComposing(false)
+    setError('')
+    setSelected(conv)
+    setMessages([])
+    loadThread(conv)
+  }
+
+  async function sendReply() {
+    if (!selected) return
+    const body = draft.trim()
+    if (!body) return
+    setSending(true)
+    setError('')
+    try {
+      const res = await fetch('/api/sms/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customerId: selected.customerId || undefined, phone: selected.customerId ? undefined : selected.phone, body })
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Send failed.')
+      setDraft('')
+      await loadThread(selected)
+      loadConversations()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Send failed.')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  // Customer search (debounced) for the new-message composer.
+  useEffect(() => {
+    if (!composing) return
+    const q = search.trim()
+    if (q.length < 2) { setHits([]); return }
+    const id = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/sms/customers?q=${encodeURIComponent(q)}`, { cache: 'no-store' })
+        const json = await res.json()
+        if (res.ok) setHits(json.customers || [])
+      } catch { /* ignore */ }
+    }, 250)
+    return () => clearTimeout(id)
+  }, [search, composing])
+
+  async function sendNew(target: { customerId?: string; phone?: string; label: string }) {
+    const body = newDraft.trim()
+    if (!body) { setError('Type a message first.'); return }
+    if (!target.customerId && !target.phone) { setError('Pick a customer or enter a mobile number.'); return }
+    setSending(true)
+    setError('')
+    try {
+      const res = await fetch('/api/sms/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customerId: target.customerId, phone: target.phone, body })
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Send failed.')
+      setComposing(false)
+      setNewDraft(''); setSearch(''); setHits([]); setTypedNumber('')
+      await loadConversations()
+      openConversation({
+        key: json.key,
+        customerId: json.customerId,
+        phone: json.phone,
+        name: target.label,
+        lastBody: body, lastDirection: 'outbound', lastAt: new Date().toISOString(),
+        unread: 0, unmatched: !json.customerId
+      })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Send failed.')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  async function toggleNotify() {
+    const next = !notifyEmail
+    setNotifyEmail(next)
+    try {
+      await fetch('/api/sms/notify-pref', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: next })
+      })
+    } catch { setNotifyEmail(!next) }
+  }
+
+  const totalUnread = useMemo(() => conversations.reduce((s, c) => s + (c.unread || 0), 0), [conversations])
+
+  // ---- styles ----
+  const card: React.CSSProperties = { background: '#fff', borderRadius: 14, boxShadow: '0 1px 3px rgba(0,0,0,.08)' }
+  const input: React.CSSProperties = { width: '100%', padding: '11px 13px', border: '1px solid #d9d9d9', borderRadius: 8, fontSize: 15, background: '#fff', boxSizing: 'border-box' }
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#f4f3f1', fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif', color: '#1a1a1a' }}>
+      <div style={{ maxWidth: 920, margin: '0 auto', padding: '32px 16px 60px' }}>
+        <header style={{ textAlign: 'center', marginBottom: 20, position: 'relative' }}>
+          {isAdmin && (
+            <a href="/admin" style={{ position: 'absolute', top: 0, right: 0, fontSize: 13, fontWeight: 600, color: '#1a1a1a', textDecoration: 'underline' }}>Admin</a>
+          )}
+          <div style={{ marginBottom: 16 }}><BrandLogos height={24} /></div>
+          <PortalNav active="messages" />
+          <h1 style={{ fontSize: 20, fontWeight: 600, margin: 0 }}>{portalNameFor(hostBrand)}</h1>
+          <p style={{ color: '#6b6b6b', fontSize: 13, marginTop: 6 }}>Your private customer conversations. Only you see the threads you&apos;re part of.</p>
+        </header>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, gap: 12, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={() => { setComposing(true); setSelected(null); setError('') }}
+            style={{ padding: '10px 18px', borderRadius: 10, border: 'none', background: '#1a1a1a', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+          >
+            + New message
+          </button>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#4a4a4a', cursor: 'pointer' }}>
+            <input type="checkbox" checked={notifyEmail} onChange={toggleNotify} />
+            Email me when a customer replies
+          </label>
+        </div>
+
+        {error && <div style={{ background: '#fdecea', color: '#b3261e', padding: '10px 13px', borderRadius: 8, fontSize: 14, marginBottom: 14 }}>{error}</div>}
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 300px) 1fr', gap: 16, alignItems: 'start' }}>
+          {/* Conversation list */}
+          <div style={{ ...card, overflow: 'hidden' }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0efed', fontSize: 12, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', color: '#6b6b6b', display: 'flex', justifyContent: 'space-between' }}>
+              <span>Conversations</span>
+              {totalUnread > 0 && <span style={{ color: '#d64545' }}>{totalUnread} unread</span>}
+            </div>
+            {conversations.length === 0 ? (
+              <div style={{ padding: 20, fontSize: 13, color: '#8a8a8a' }}>No conversations yet. Start one with “New message”.</div>
+            ) : (
+              <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+                {conversations.map((c) => (
+                  <button
+                    key={c.key}
+                    type="button"
+                    onClick={() => openConversation(c)}
+                    style={{
+                      display: 'block', width: '100%', textAlign: 'left', padding: '12px 16px', border: 'none',
+                      borderTop: '1px solid #f4f3f1', cursor: 'pointer',
+                      background: selected?.key === c.key ? '#f4f3f1' : '#fff'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                      <span style={{ fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {c.name}{c.unmatched ? ' · not yet a customer' : ''}
+                      </span>
+                      <span style={{ fontSize: 11, color: '#9a9a9a', whiteSpace: 'nowrap' }}>{timeLabel(c.lastAt)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 3 }}>
+                      <span style={{ fontSize: 12, color: '#8a8a8a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {c.lastDirection === 'outbound' ? 'You: ' : ''}{c.lastBody}
+                      </span>
+                      {c.unread > 0 && (
+                        <span style={{ minWidth: 18, height: 18, padding: '0 5px', borderRadius: 999, background: '#d64545', color: '#fff', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{c.unread}</span>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Right pane: composer or thread */}
+          <div style={{ ...card, minHeight: 360, display: 'flex', flexDirection: 'column' }}>
+            {composing ? (
+              <div style={{ padding: 20 }}>
+                <h2 style={{ fontSize: 15, fontWeight: 700, marginTop: 0, marginBottom: 14 }}>New message</h2>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#6b6b6b', marginBottom: 6 }}>Find a customer</label>
+                <input style={input} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by name or mobile…" />
+                {hits.length > 0 && (
+                  <div style={{ border: '1px solid #eee', borderRadius: 8, marginTop: 8, maxHeight: 180, overflowY: 'auto' }}>
+                    {hits.map((h) => (
+                      <button
+                        key={h.id}
+                        type="button"
+                        onClick={() => sendNew({ customerId: h.id, label: h.name })}
+                        disabled={sending || !newDraft.trim()}
+                        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 12px', border: 'none', borderTop: '1px solid #f4f3f1', background: '#fff', cursor: newDraft.trim() ? 'pointer' : 'not-allowed', fontSize: 14 }}
+                      >
+                        <span style={{ fontWeight: 600 }}>{h.name}</span> <span style={{ color: '#9a9a9a', fontSize: 12 }}>{h.phone}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <div style={{ margin: '16px 0 6px', fontSize: 12, color: '#9a9a9a', textAlign: 'center' }}>— or text a number directly —</div>
+                <input style={input} value={typedNumber} onChange={(e) => setTypedNumber(e.target.value)} inputMode="tel" placeholder="04xx xxx xxx" />
+
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#6b6b6b', margin: '16px 0 6px' }}>Message</label>
+                <textarea style={{ ...input, minHeight: 90, resize: 'vertical' }} value={newDraft} onChange={(e) => setNewDraft(e.target.value)} placeholder="Type your message…" />
+
+                <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+                  <button
+                    type="button"
+                    onClick={() => sendNew({ phone: typedNumber.trim(), label: typedNumber.trim() })}
+                    disabled={sending || !newDraft.trim() || !typedNumber.trim()}
+                    style={{ padding: '11px 18px', borderRadius: 10, border: 'none', background: (sending || !newDraft.trim() || !typedNumber.trim()) ? '#bbb' : '#1a1a1a', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    Send to number
+                  </button>
+                  <button type="button" onClick={() => { setComposing(false); setError('') }} style={{ padding: '11px 18px', borderRadius: 10, border: '1px solid #d9d9d9', background: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+                </div>
+                <p style={{ fontSize: 12, color: '#9a9a9a', marginTop: 12 }}>Pick a customer from the list to send to them, or use “Send to number” for someone not in the system yet. Type your message first.</p>
+              </div>
+            ) : selected ? (
+              <>
+                <div style={{ padding: '14px 18px', borderBottom: '1px solid #f0efed' }}>
+                  <div style={{ fontWeight: 700, fontSize: 15 }}>{selected.name}</div>
+                  <div style={{ fontSize: 12, color: '#9a9a9a' }}>{selected.phone || ''}{selected.unmatched ? ' · not yet a customer' : ''}</div>
+                </div>
+                <div style={{ flex: 1, padding: 18, overflowY: 'auto', maxHeight: '52vh', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {messages.map((m) => {
+                    const out = m.direction === 'outbound'
+                    return (
+                      <div key={m.id} style={{ alignSelf: out ? 'flex-end' : 'flex-start', maxWidth: '78%' }}>
+                        <div style={{
+                          padding: '9px 13px', borderRadius: 14, fontSize: 14, lineHeight: 1.4, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                          background: out ? '#1a1a1a' : '#efeeec', color: out ? '#fff' : '#1a1a1a',
+                          borderBottomRightRadius: out ? 4 : 14, borderBottomLeftRadius: out ? 14 : 4
+                        }}>{m.body}</div>
+                        <div style={{ fontSize: 10.5, color: '#a5a5a5', marginTop: 3, textAlign: out ? 'right' : 'left' }}>
+                          {timeLabel(m.created_at)}{out && m.status ? ` · ${m.status}` : ''}{m.error ? ` · ${m.error}` : ''}
+                        </div>
+                      </div>
+                    )
+                  })}
+                  <div ref={threadEndRef} />
+                </div>
+                <div style={{ padding: 14, borderTop: '1px solid #f0efed', display: 'flex', gap: 10, alignItems: 'flex-end' }}>
+                  <textarea
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); sendReply() } }}
+                    placeholder="Type a message… (Ctrl/⌘+Enter to send)"
+                    style={{ ...input, minHeight: 44, maxHeight: 140, resize: 'vertical', flex: 1 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={sendReply}
+                    disabled={sending || !draft.trim()}
+                    style={{ padding: '12px 20px', borderRadius: 10, border: 'none', background: (sending || !draft.trim()) ? '#bbb' : '#1a1a1a', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    {sending ? 'Sending…' : 'Send'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div style={{ margin: 'auto', textAlign: 'center', color: '#9a9a9a', fontSize: 14, padding: 40 }}>
+                Select a conversation, or start a new message.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
