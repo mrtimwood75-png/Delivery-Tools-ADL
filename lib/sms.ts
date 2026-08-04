@@ -174,6 +174,18 @@ export async function sendOrderTemplate(orderId: string, tpl: { id: string; temp
   }
 }
 
+// Finds an existing customer whose stored mobile matches `phone` (compared on
+// the last 9 digits, so format differences like +61/0 don't matter). Returns the
+// customer id or null. Used so a free-form text to a typed number threads with
+// that customer's replies instead of creating a stray "unmatched" conversation.
+export async function findCustomerIdByPhone(phone: string): Promise<string | null> {
+  const last9 = String(phone || '').replace(/\D/g, '').slice(-9)
+  if (last9.length < 8) return null
+  const { data } = await supabaseAdmin.from('customers').select('id, phone').not('phone', 'is', null).limit(5000)
+  const hit = (data || []).find((c) => String(c.phone || '').replace(/\D/g, '').slice(-9) === last9)
+  return hit ? (hit.id as string) : null
+}
+
 // Sends a free-form (non-template) SMS from a staff member to a customer or a
 // typed mobile number, then logs it to sms_messages tagged with `sentBy` (the
 // staff member's app_users id) so it shows in their private Messages inbox.
@@ -199,7 +211,9 @@ export async function sendStaffSms(params: {
     body: text,
     template_id: null,
     sent_by: params.sentBy || null,
-    purpose: null
+    purpose: null,
+    // Stamp the store so each app's Messages inbox only shows its own threads.
+    brand: params.brand || null
   }
   try {
     const messageId = await sendMessageMediaSms(mobile, text, params.brand)

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { getRequestAppUser } from '@/lib/apiAuth'
-import { sendStaffSms } from '@/lib/sms'
+import { sendStaffSms, findCustomerIdByPhone } from '@/lib/sms'
 import { normalizeMobileAu } from '@/lib/format'
 import { paymentBrandForHost } from '@/lib/host'
 
@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid request.' }, { status: 400 })
   }
 
-  const customerId = String(body.customerId || '').trim()
+  let customerId = String(body.customerId || '').trim()
   const message = String(body.body || '').trim()
   if (!message) return NextResponse.json({ error: 'Message is blank.' }, { status: 400 })
 
@@ -34,6 +34,13 @@ export async function POST(request: NextRequest) {
     if (!toPhone) toPhone = String(customer.phone || '').trim()
   }
   if (!toPhone) return NextResponse.json({ error: 'No mobile number for this recipient.' }, { status: 400 })
+
+  // A typed number that belongs to an existing customer should thread with that
+  // customer (and their replies), not create a stray "unmatched" conversation.
+  if (!customerId) {
+    const matchedId = await findCustomerIdByPhone(toPhone)
+    if (matchedId) customerId = matchedId
+  }
 
   // Which brand's MessageMedia account/sender number to send from: the app the
   // staff member is using (its host). Falls back to legacy env creds off-host.

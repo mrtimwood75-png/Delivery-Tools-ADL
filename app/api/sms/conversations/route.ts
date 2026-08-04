@@ -1,12 +1,13 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { getRequestAppUser } from '@/lib/apiAuth'
+import { paymentBrandForHost } from '@/lib/host'
 
-// The caller's own SMS conversations — their private inbox. A conversation
-// "belongs to" a staff member when they have sent at least one message in it
-// (sms_messages.sent_by = them). Matched threads are keyed by customer; replies
-// from a number we don't have a customer for are keyed by phone ("unmatched").
-// Admins still only see their own here — oversight of all threads is separate.
+// The caller's own SMS conversations — their private inbox. This is the
+// Messages *tool's* channel, kept separate from the dashboard's order/delivery
+// SMS: a conversation only belongs here when the staff member sent a FREE-FORM
+// message in it through this tool (no order_id, no template_id) from THIS store
+// (brand). The thread view then shows that customer's full history for context.
 
 type Msg = {
   id: string
@@ -31,16 +32,24 @@ type Conversation = {
   unmatched: boolean
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const me = await getRequestAppUser()
   if (!me) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // Which conversations has this staff member taken part in?
-  const { data: mine, error: mineError } = await supabaseAdmin
+  const brand = paymentBrandForHost(request.headers.get('host'))
+
+  // Which conversations has this staff member started through this tool? Only
+  // free-form sends (no order/template) count, and — on a payment host — only
+  // this store's brand, so each app shows just its own threads.
+  let mineQuery = supabaseAdmin
     .from('sms_messages')
     .select('customer_id, phone')
     .eq('sent_by', me.id)
+    .is('order_id', null)
+    .is('template_id', null)
     .limit(5000)
+  if (brand) mineQuery = mineQuery.eq('brand', brand)
+  const { data: mine, error: mineError } = await mineQuery
   if (mineError) return NextResponse.json({ error: mineError.message }, { status: 500 })
 
   const customerIds = new Set<string>()

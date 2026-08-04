@@ -27,8 +27,6 @@ type ThreadMessage = {
   error: string | null
 }
 
-type CustomerHit = { id: string; name: string; phone: string | null }
-
 function portalNameFor(brand: 'bca' | 'transforma' | null): string {
   return brand === 'transforma' ? 'Transforma Messages'
     : brand === 'bca' ? 'BoConcept Adelaide Messages'
@@ -59,8 +57,6 @@ export default function MessagesPage() {
 
   // New-message composer state.
   const [composing, setComposing] = useState(false)
-  const [search, setSearch] = useState('')
-  const [hits, setHits] = useState<CustomerHit[]>([])
   const [typedNumber, setTypedNumber] = useState('')
   const [newDraft, setNewDraft] = useState('')
 
@@ -159,21 +155,6 @@ export default function MessagesPage() {
     }
   }
 
-  // Customer search (debounced) for the new-message composer.
-  useEffect(() => {
-    if (!composing) return
-    const q = search.trim()
-    if (q.length < 2) { setHits([]); return }
-    const id = setTimeout(async () => {
-      try {
-        const res = await fetch(`/api/sms/customers?q=${encodeURIComponent(q)}`, { cache: 'no-store' })
-        const json = await res.json()
-        if (res.ok) setHits(json.customers || [])
-      } catch { /* ignore */ }
-    }, 250)
-    return () => clearTimeout(id)
-  }, [search, composing])
-
   async function sendNew(target: { customerId?: string; phone?: string; label: string }) {
     const body = newDraft.trim()
     if (!body) { setError('Type a message first.'); return }
@@ -189,7 +170,7 @@ export default function MessagesPage() {
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Send failed.')
       setComposing(false)
-      setNewDraft(''); setSearch(''); setHits([]); setTypedNumber('')
+      setNewDraft(''); setTypedNumber('')
       await loadConversations()
       openConversation({
         key: json.key,
@@ -300,25 +281,7 @@ export default function MessagesPage() {
             {composing ? (
               <div style={{ padding: 20 }}>
                 <h2 style={{ fontSize: 15, fontWeight: 700, marginTop: 0, marginBottom: 14 }}>New message</h2>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#6b6b6b', marginBottom: 6 }}>Find a customer</label>
-                <input style={input} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by name or mobile…" />
-                {hits.length > 0 && (
-                  <div style={{ border: '1px solid #eee', borderRadius: 8, marginTop: 8, maxHeight: 180, overflowY: 'auto' }}>
-                    {hits.map((h) => (
-                      <button
-                        key={h.id}
-                        type="button"
-                        onClick={() => sendNew({ customerId: h.id, label: h.name })}
-                        disabled={sending || !newDraft.trim()}
-                        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 12px', border: 'none', borderTop: '1px solid #f4f3f1', background: '#fff', cursor: newDraft.trim() ? 'pointer' : 'not-allowed', fontSize: 14 }}
-                      >
-                        <span style={{ fontWeight: 600 }}>{h.name}</span> <span style={{ color: '#9a9a9a', fontSize: 12 }}>{h.phone}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                <div style={{ margin: '16px 0 6px', fontSize: 12, color: '#9a9a9a', textAlign: 'center' }}>— or text a number directly —</div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#6b6b6b', marginBottom: 6 }}>Mobile number</label>
                 <input style={input} value={typedNumber} onChange={(e) => setTypedNumber(e.target.value)} inputMode="tel" placeholder="04xx xxx xxx" />
 
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#6b6b6b', margin: '16px 0 6px' }}>Message</label>
@@ -331,11 +294,11 @@ export default function MessagesPage() {
                     disabled={sending || !newDraft.trim() || !typedNumber.trim()}
                     style={{ padding: '11px 18px', borderRadius: 10, border: 'none', background: (sending || !newDraft.trim() || !typedNumber.trim()) ? '#bbb' : '#1a1a1a', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
                   >
-                    Send to number
+                    Send
                   </button>
                   <button type="button" onClick={() => { setComposing(false); setError('') }} style={{ padding: '11px 18px', borderRadius: 10, border: '1px solid #d9d9d9', background: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
                 </div>
-                <p style={{ fontSize: 12, color: '#9a9a9a', marginTop: 12 }}>Pick a customer from the list to send to them, or use “Send to number” for someone not in the system yet. Type your message first.</p>
+                <p style={{ fontSize: 12, color: '#9a9a9a', marginTop: 12 }}>If the number belongs to an existing customer, it&apos;ll thread under their name automatically.</p>
               </div>
             ) : selected ? (
               <>

@@ -17,8 +17,9 @@ export async function GET(request: NextRequest) {
   const phone = customerId ? '' : normalizeMobileAu(searchParams.get('phone') || '')
   if (!customerId && !phone) return NextResponse.json({ error: 'Missing customerId or phone.' }, { status: 400 })
 
-  // Ownership: has this staff member sent anything in this conversation?
-  let ownQuery = supabaseAdmin.from('sms_messages').select('id').eq('sent_by', me.id).limit(1)
+  // Ownership: has this staff member sent a free-form message (this tool) in
+  // this conversation? Order/template sends belong to the dashboard, not here.
+  let ownQuery = supabaseAdmin.from('sms_messages').select('id').eq('sent_by', me.id).is('order_id', null).is('template_id', null).limit(1)
   ownQuery = customerId ? ownQuery.eq('customer_id', customerId) : ownQuery.is('customer_id', null).eq('phone', phone)
   const { data: owned, error: ownError } = await ownQuery
   if (ownError) return NextResponse.json({ error: ownError.message }, { status: 500 })

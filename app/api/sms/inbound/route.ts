@@ -10,14 +10,21 @@ import { sendEmail } from '@/lib/email'
 // webhook from storing the reply.
 async function notifyOwningStaff(customerId: string | null, phone: string, content: string, origin: string) {
   try {
+    // The Messages-tool owner is whoever last sent a FREE-FORM message (no
+    // order/template) in this conversation. Replies to dashboard order SMS are
+    // handled there, so they don't trigger a Messages email. Match on the
+    // customer or the phone, since a reply may be matched to a customer while
+    // the outbound was to a typed number (or vice versa).
     let ownerQuery = supabaseAdmin
       .from('sms_messages')
       .select('sent_by')
       .eq('direction', 'outbound')
+      .is('order_id', null)
+      .is('template_id', null)
       .not('sent_by', 'is', null)
       .order('created_at', { ascending: false })
       .limit(1)
-    ownerQuery = customerId ? ownerQuery.eq('customer_id', customerId) : ownerQuery.is('customer_id', null).eq('phone', phone)
+    ownerQuery = customerId ? ownerQuery.or(`customer_id.eq.${customerId},phone.eq.${phone}`) : ownerQuery.eq('phone', phone)
     const { data: owner } = await ownerQuery
     const sentBy = owner?.[0]?.sent_by as string | undefined
     if (!sentBy) return

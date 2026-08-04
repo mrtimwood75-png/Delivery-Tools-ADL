@@ -178,7 +178,10 @@ create table if not exists public.sms_messages (
   sent_by uuid references public.app_users(id) on delete set null,
   error text,
   read_at timestamptz,
-  purpose text
+  purpose text,
+  -- Store a free-form (Messages tool) send went out from, so each app's inbox
+  -- only shows its own store's threads. Null for order/template sends.
+  brand text
 );
 
 create index if not exists sms_messages_customer_id_idx on public.sms_messages (customer_id);
