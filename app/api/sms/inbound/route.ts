@@ -8,7 +8,10 @@ import { sendEmail } from '@/lib/email'
 // this customer/number, per sms_messages.sent_by) that a reply came in — if they
 // have the toggle on. Never throws: a missing/failed email must not stop the
 // webhook from storing the reply.
-async function notifyOwningStaff(customerId: string | null, phone: string, content: string, origin: string) {
+// Returns a short status string describing what happened, so the outcome can be
+// recorded on the message row for diagnosis (we can't read this app's server
+// logs). Never throws.
+async function notifyOwningStaff(customerId: string | null, phone: string, content: string, origin: string): Promise<string> {
   try {
     // The Messages-tool owner is whoever last sent a FREE-FORM message (no
     // order/template) in this conversation. Replies to dashboard order SMS are
@@ -37,29 +40,33 @@ async function notifyOwningStaff(customerId: string | null, phone: string, conte
     }
     candidates.sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
     const sentBy = candidates[0]?.sent_by
-    if (!sentBy) return
+    if (!sentBy) return 'notify: no free-form owner'
 
     const { data: staff } = await supabaseAdmin
       .from('app_users')
       .select('email, full_name, is_active, sms_notify_email')
       .eq('id', sentBy)
       .maybeSingle()
-    if (!staff || staff.is_active === false || staff.sms_notify_email === false || !staff.email) return
+    if (!staff) return 'notify: owner row missing'
+    if (staff.is_active === false) return 'notify: owner inactive'
+    if (staff.sms_notify_email === false) return 'notify: owner opted out'
+    if (!staff.email) return 'notify: owner has no email'
 
-    let who = phone || 'a customer'
-    if (customerId) {
-      const { data: customer } = await supabaseAdmin.from('customers').select('name').eq('id', customerId).maybeSingle()
-      if (customer?.name) who = customer.name as string
-    }
-
+    const who = phone || 'a customer'
     const link = `${origin.replace(/\/$/, '')}/messages`
-    await sendEmail({
-      to: staff.email as string,
-      subject: `New SMS reply from ${who}`,
-      text: `${who} replied:\n\n"${content}"\n\nOpen your messages to reply:\n${link}\n\n(You're getting this because you last texted this customer. Turn these off in Messages.)`
-    })
+    try {
+      await sendEmail({
+        to: staff.email as string,
+        subject: `New SMS reply from ${who}`,
+        text: `${who} replied:\n\n"${content}"\n\nOpen your messages to reply:\n${link}\n\n(You're getting this because you last texted this number. Turn these off in Messages.)`
+      })
+      return `notify: emailed ${staff.email}`
+    } catch (sendError) {
+      return `notify: send FAILED: ${sendError instanceof Error ? sendError.message : 'unknown'}`.slice(0, 250)
+    }
   } catch (error) {
     console.error('[sms-inbound] notify failed', error)
+    return `notify: error: ${error instanceof Error ? error.message : 'unknown'}`.slice(0, 250)
   }
 }
 
@@ -211,7 +218,7 @@ async function handleReply(reply: AnyRecord, origin: string) {
     }
   }
 
-  await supabaseAdmin.from('sms_messages').insert({
+  const { data: inserted } = await supabaseAdmin.from('sms_messages').insert({
     customer_id,
     order_id: targetOrderId,
     direction: 'inbound',
@@ -220,10 +227,12 @@ async function handleReply(reply: AnyRecord, origin: string) {
     status: 'received',
     provider_message_id: providerId,
     created_at: date
-  })
+  }).select('id').maybeSingle()
 
-  // Let the staff member who owns this thread know a reply landed.
-  await notifyOwningStaff(customer_id, normalizedPhone || source, content, origin)
+  // Let the staff member who owns this thread know a reply landed, and record
+  // the outcome on the row (diagnostic — this app's server logs aren't visible).
+  const notifyResult = await notifyOwningStaff(customer_id, normalizedPhone || source, content, origin)
+  if (inserted?.id) await supabaseAdmin.from('sms_messages').update({ error: notifyResult }).eq('id', inserted.id)
   return true
 }
 

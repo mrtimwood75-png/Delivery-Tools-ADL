@@ -213,7 +213,11 @@ export async function sendStaffSms(params: {
     sent_by: params.sentBy || null,
     purpose: null,
     // Stamp the store so each app's Messages inbox only shows its own threads.
-    brand: params.brand || null
+    brand: params.brand || null,
+    // Record when the staff member hit send — BEFORE the provider round-trip —
+    // so the message can't sort after a reply that the provider timestamps
+    // during that ~200ms send call.
+    created_at: new Date().toISOString()
   }
   try {
     const messageId = await sendMessageMediaSms(mobile, text, params.brand)

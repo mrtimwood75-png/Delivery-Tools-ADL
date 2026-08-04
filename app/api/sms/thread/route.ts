@@ -25,13 +25,14 @@ export async function GET(request: NextRequest) {
   if (ownError) return NextResponse.json({ error: ownError.message }, { status: 500 })
   if (!owned || !owned.length) return NextResponse.json({ error: 'Not your conversation.' }, { status: 403 })
 
-  // The thread itself, chronological with deterministic tie-breaks (inbound
-  // before our outbound on an equal timestamp, then by id).
+  // The thread itself, chronological. On an equal timestamp show OUR outbound
+  // before the inbound: in this tool a staff member sends first and the reply
+  // follows, so a text must never render below the reply it prompted.
   let msgQuery = supabaseAdmin
     .from('sms_messages')
     .select('id, created_at, direction, phone, body, status, provider_message_id, order_id, error')
     .order('created_at', { ascending: true })
-    .order('direction', { ascending: true })
+    .order('direction', { ascending: false })
     .order('id', { ascending: true })
   msgQuery = customerId ? msgQuery.eq('customer_id', customerId) : msgQuery.is('customer_id', null).eq('phone', phone)
   const { data: messages, error: msgError } = await msgQuery
