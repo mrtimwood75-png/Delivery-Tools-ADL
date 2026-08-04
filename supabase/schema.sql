@@ -191,6 +191,16 @@ create index if not exists sms_messages_provider_message_id_idx on public.sms_me
 create index if not exists sms_messages_created_at_idx on public.sms_messages (created_at);
 create index if not exists sms_messages_sent_by_idx on public.sms_messages (sent_by);
 
+-- Optional per-number display names for the Messages tool, set by staff inside
+-- the app. The inbox shows the number by default and a name only when set here;
+-- it never uses the customer's delivery-database name.
+create table if not exists public.sms_contacts (
+  phone text primary key,
+  display_name text,
+  updated_at timestamptz not null default now()
+);
+alter table public.sms_contacts enable row level security;
+
 alter table public.sms_messages enable row level security;
 
 create policy "Allow authenticated users to read sms messages"

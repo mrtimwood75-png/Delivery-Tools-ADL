@@ -86,14 +86,17 @@ export async function GET(request: NextRequest) {
     messages.push(...((data || []) as Msg[]))
   }
 
-  // Names for the matched customers.
-  const nameById = new Map<string, string>()
-  if (customerIds.size) {
-    const { data: customers } = await supabaseAdmin
-      .from('customers')
-      .select('id, name')
-      .in('id', Array.from(customerIds))
-    for (const c of customers || []) nameById.set(String(c.id), (c.name as string) || 'Customer')
+  // Display names come ONLY from names staff saved inside the Messages tool
+  // (sms_contacts), keyed by phone — never the customer's delivery-DB name.
+  const msgPhones = new Set<string>()
+  for (const m of messages) if (m.phone) msgPhones.add(m.phone)
+  const nameByPhone = new Map<string, string>()
+  if (msgPhones.size) {
+    const { data: contacts } = await supabaseAdmin
+      .from('sms_contacts')
+      .select('phone, display_name')
+      .in('phone', Array.from(msgPhones))
+    for (const c of contacts || []) if (c.display_name) nameByPhone.set(String(c.phone), c.display_name as string)
   }
 
   const byKey = new Map<string, Conversation>()
@@ -106,7 +109,7 @@ export async function GET(request: NextRequest) {
         key,
         customerId: m.customer_id,
         phone: m.phone,
-        name: matched ? (nameById.get(String(m.customer_id)) || 'Customer') : (m.phone || 'Unknown number'),
+        name: (m.phone && nameByPhone.get(m.phone)) || m.phone || 'Unknown number',
         lastBody: m.body,
         lastDirection: m.direction,
         lastAt: m.created_at,

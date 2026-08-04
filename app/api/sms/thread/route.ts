@@ -37,11 +37,15 @@ export async function GET(request: NextRequest) {
   const { data: messages, error: msgError } = await msgQuery
   if (msgError) return NextResponse.json({ error: msgError.message }, { status: 500 })
 
-  // Conversation label.
-  let name = phone || 'Unknown number'
-  if (customerId) {
-    const { data: customer } = await supabaseAdmin.from('customers').select('name, phone').eq('id', customerId).maybeSingle()
-    name = (customer?.name as string) || 'Customer'
+  // The conversation's number (for a customer thread, taken from its messages).
+  const convPhone = phone || (messages || []).map((m) => m.phone).find(Boolean) || ''
+
+  // Label comes ONLY from a name saved inside the Messages tool (sms_contacts),
+  // never the customer's delivery-DB name; otherwise show the number.
+  let name = convPhone || 'Unknown number'
+  if (convPhone) {
+    const { data: contact } = await supabaseAdmin.from('sms_contacts').select('display_name').eq('phone', convPhone).maybeSingle()
+    if (contact?.display_name) name = contact.display_name as string
   }
 
   // Opening the thread clears its unread inbound.
@@ -53,5 +57,5 @@ export async function GET(request: NextRequest) {
   readQuery = customerId ? readQuery.eq('customer_id', customerId) : readQuery.is('customer_id', null).eq('phone', phone)
   await readQuery
 
-  return NextResponse.json({ name, customerId: customerId || null, phone: phone || null, messages: messages || [] })
+  return NextResponse.json({ name, customerId: customerId || null, phone: convPhone || null, messages: messages || [] })
 }

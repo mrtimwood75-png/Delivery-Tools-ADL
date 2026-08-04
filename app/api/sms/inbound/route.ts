@@ -12,21 +12,31 @@ async function notifyOwningStaff(customerId: string | null, phone: string, conte
   try {
     // The Messages-tool owner is whoever last sent a FREE-FORM message (no
     // order/template) in this conversation. Replies to dashboard order SMS are
-    // handled there, so they don't trigger a Messages email. Match on the
-    // customer or the phone, since a reply may be matched to a customer while
-    // the outbound was to a typed number (or vice versa).
-    let ownerQuery = supabaseAdmin
+    // handled there, so they don't trigger a Messages email. We match on the
+    // customer AND on the phone (a reply may be matched to a customer while the
+    // outbound went to a typed number, or vice versa) with two simple queries,
+    // then take the most recent — robust to phone strings that would trip up a
+    // combined .or() filter.
+    const ownerBase = () => supabaseAdmin
       .from('sms_messages')
-      .select('sent_by')
+      .select('sent_by, created_at')
       .eq('direction', 'outbound')
       .is('order_id', null)
       .is('template_id', null)
       .not('sent_by', 'is', null)
       .order('created_at', { ascending: false })
       .limit(1)
-    ownerQuery = customerId ? ownerQuery.or(`customer_id.eq.${customerId},phone.eq.${phone}`) : ownerQuery.eq('phone', phone)
-    const { data: owner } = await ownerQuery
-    const sentBy = owner?.[0]?.sent_by as string | undefined
+    const candidates: Array<{ sent_by: string; created_at: string }> = []
+    if (customerId) {
+      const { data } = await ownerBase().eq('customer_id', customerId)
+      if (data?.[0]) candidates.push(data[0] as { sent_by: string; created_at: string })
+    }
+    if (phone) {
+      const { data } = await ownerBase().eq('phone', phone)
+      if (data?.[0]) candidates.push(data[0] as { sent_by: string; created_at: string })
+    }
+    candidates.sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
+    const sentBy = candidates[0]?.sent_by
     if (!sentBy) return
 
     const { data: staff } = await supabaseAdmin

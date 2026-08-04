@@ -60,6 +60,10 @@ export default function MessagesPage() {
   const [typedNumber, setTypedNumber] = useState('')
   const [newDraft, setNewDraft] = useState('')
 
+  // Rename (SMS-app contact name) state for the open thread.
+  const [renaming, setRenaming] = useState(false)
+  const [nameDraft, setNameDraft] = useState('')
+
   const threadEndRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -125,10 +129,32 @@ export default function MessagesPage() {
 
   function openConversation(conv: Conversation) {
     setComposing(false)
+    setRenaming(false)
     setError('')
     setSelected(conv)
     setMessages([])
     loadThread(conv)
+  }
+
+  // Save (or clear, when blank) the SMS-app name for this number.
+  async function saveName() {
+    if (!selected?.phone) return
+    const name = nameDraft.trim()
+    try {
+      const res = await fetch('/api/sms/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: selected.phone, name })
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Could not save name.')
+      const newName = json.name || selected.phone
+      setSelected({ ...selected, name: newName })
+      setConversations((prev) => prev.map((c) => (c.key === selected.key ? { ...c, name: newName } : c)))
+      setRenaming(false)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save name.')
+    }
   }
 
   async function sendReply() {
@@ -258,7 +284,7 @@ export default function MessagesPage() {
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                       <span style={{ fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {c.name}{c.unmatched ? ' · not yet a customer' : ''}
+                        {c.name}
                       </span>
                       <span style={{ fontSize: 11, color: '#9a9a9a', whiteSpace: 'nowrap' }}>{timeLabel(c.lastAt)}</span>
                     </div>
@@ -303,8 +329,34 @@ export default function MessagesPage() {
             ) : selected ? (
               <>
                 <div style={{ padding: '14px 18px', borderBottom: '1px solid #f0efed' }}>
-                  <div style={{ fontWeight: 700, fontSize: 15 }}>{selected.name}</div>
-                  <div style={{ fontSize: 12, color: '#9a9a9a' }}>{selected.phone || ''}{selected.unmatched ? ' · not yet a customer' : ''}</div>
+                  {renaming ? (
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <input
+                        autoFocus
+                        style={{ ...input, padding: '8px 11px' }}
+                        value={nameDraft}
+                        onChange={(e) => setNameDraft(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') saveName(); if (e.key === 'Escape') setRenaming(false) }}
+                        placeholder="Contact name (leave blank to show the number)"
+                      />
+                      <button type="button" onClick={saveName} style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: '#1a1a1a', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Save</button>
+                      <button type="button" onClick={() => setRenaming(false)} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #d9d9d9', background: '#fff', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 15 }}>{selected.name}</div>
+                        {selected.name !== selected.phone && <div style={{ fontSize: 12, color: '#9a9a9a' }}>{selected.phone}</div>}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => { setNameDraft(selected.name === selected.phone ? '' : selected.name); setRenaming(true) }}
+                        style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #dcdbd8', background: '#fff', fontSize: 12, fontWeight: 600, color: '#4a4a4a', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                      >
+                        {selected.name === selected.phone ? 'Add name' : 'Edit name'}
+                      </button>
+                    </div>
+                  )}
                 </div>
                 <div style={{ flex: 1, padding: 18, overflowY: 'auto', maxHeight: '52vh', display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {messages.map((m) => {
