@@ -278,7 +278,7 @@ export default function MessagesPage() {
                     onClick={() => openConversation(c)}
                     style={{
                       display: 'block', width: '100%', textAlign: 'left', padding: '12px 16px', border: 'none',
-                      borderTop: '1px solid #f4f3f1', cursor: 'pointer',
+                      borderTop: '1px solid #f4f3f1', cursor: 'pointer', color: '#1a1a1a',
                       background: selected?.key === c.key ? '#f4f3f1' : '#fff'
                     }}
                   >
@@ -322,9 +322,9 @@ export default function MessagesPage() {
                   >
                     Send
                   </button>
-                  <button type="button" onClick={() => { setComposing(false); setError('') }} style={{ padding: '11px 18px', borderRadius: 10, border: '1px solid #d9d9d9', background: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+                  <button type="button" onClick={() => { setComposing(false); setError('') }} style={{ padding: '11px 18px', borderRadius: 10, border: '1px solid #d9d9d9', background: '#fff', color: '#1a1a1a', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
                 </div>
-                <p style={{ fontSize: 12, color: '#9a9a9a', marginTop: 12 }}>If the number belongs to an existing customer, it&apos;ll thread under their name automatically.</p>
+                <p style={{ fontSize: 12, color: '#9a9a9a', marginTop: 12 }}>If the number belongs to an existing customer, your message threads with their replies automatically.</p>
               </div>
             ) : selected ? (
               <>
@@ -340,7 +340,7 @@ export default function MessagesPage() {
                         placeholder="Contact name (leave blank to show the number)"
                       />
                       <button type="button" onClick={saveName} style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: '#1a1a1a', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Save</button>
-                      <button type="button" onClick={() => setRenaming(false)} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #d9d9d9', background: '#fff', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+                      <button type="button" onClick={() => setRenaming(false)} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #d9d9d9', background: '#fff', color: '#1a1a1a', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
                     </div>
                   ) : (
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
