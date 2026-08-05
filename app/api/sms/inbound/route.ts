@@ -105,6 +105,21 @@ function pick(obj: AnyRecord, keys: string[]): string {
   return ''
 }
 
+// Extract inbound MMS image URLs. MessageMedia field names vary, and each entry
+// may be a bare URL string or an object with a url/uri — read tolerantly.
+function pickMedia(obj: AnyRecord): string[] {
+  const raw = obj.media ?? obj.media_urls ?? obj.attachments ?? obj.mms
+  if (!raw) return []
+  const arr = Array.isArray(raw) ? raw : [raw]
+  return arr
+    .map((m) => {
+      if (typeof m === 'string') return m.trim()
+      if (m && typeof m === 'object') return String((m as AnyRecord).url || (m as AnyRecord).uri || (m as AnyRecord).href || '').trim()
+      return ''
+    })
+    .filter((u) => /^https?:\/\//i.test(u))
+}
+
 function authorised(request: NextRequest) {
   // Accept the legacy secret or either brand's secret, so both the BCA and
   // Transforma MessageMedia accounts can post replies to this one endpoint.
@@ -158,9 +173,10 @@ async function findCustomer(normalizedPhone: string, originalMessageId: string):
 async function handleReply(reply: AnyRecord, origin: string) {
   const content = pick(reply, ['content', 'message', 'body', 'text'])
   const source = pick(reply, ['source_number', 'source', 'from', 'originator', 'sender', 'mobile'])
-  // A real customer reply always has message text. Events with no content
-  // (e.g. delivery reports, or fields that didn't resolve) are not replies.
-  if (!content) return false
+  const media = pickMedia(reply)
+  // A real customer reply has text and/or an image. Events with neither (e.g.
+  // delivery reports, or fields that didn't resolve) are not replies.
+  if (!content && !media.length) return false
   if (!source) return false
 
   const originalMessageId = pick(reply, ['message_id', 'in_reply_to', 'original_message_id'])
@@ -234,9 +250,10 @@ async function handleReply(reply: AnyRecord, origin: string) {
     order_id: targetOrderId,
     direction: 'inbound',
     phone: normalizedPhone || source,
-    body: content || '(no content)',
+    body: content || (media.length ? '📷 Image' : '(no content)'),
     status: 'received',
     provider_message_id: providerId,
+    media_urls: media.length ? media : null,
     created_at: date
   }).select('id').maybeSingle()
 

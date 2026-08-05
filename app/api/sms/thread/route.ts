@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
   // follows, so a text must never render below the reply it prompted.
   let msgQuery = supabaseAdmin
     .from('sms_messages')
-    .select('id, created_at, direction, phone, body, status, provider_message_id, order_id, error')
+    .select('id, created_at, direction, phone, body, status, provider_message_id, order_id, error, media_urls')
     .order('created_at', { ascending: true })
     .order('direction', { ascending: false })
     .order('id', { ascending: true })

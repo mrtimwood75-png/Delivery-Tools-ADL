@@ -181,7 +181,10 @@ create table if not exists public.sms_messages (
   purpose text,
   -- Store a free-form (Messages tool) send went out from, so each app's inbox
   -- only shows its own store's threads. Null for order/template sends.
-  brand text
+  brand text,
+  -- Public image URLs on the message (MMS): images staff sent, or a customer
+  -- sent in. Null/empty for text-only messages.
+  media_urls jsonb
 );
 
 create index if not exists sms_messages_customer_id_idx on public.sms_messages (customer_id);

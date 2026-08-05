@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
   const me = await getRequestAppUser()
   if (!me) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  let body: { customerId?: string; phone?: string; body?: string }
+  let body: { customerId?: string; phone?: string; body?: string; mediaUrls?: unknown }
   try {
     body = await request.json()
   } catch {
@@ -22,7 +22,15 @@ export async function POST(request: NextRequest) {
 
   let customerId = String(body.customerId || '').trim()
   const message = String(body.body || '').trim()
-  if (!message) return NextResponse.json({ error: 'Message is blank.' }, { status: 400 })
+
+  // Only accept image URLs we host (our public bucket) as MMS media — never an
+  // arbitrary caller-supplied URL.
+  const mediaPrefix = `${(process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\/$/, '')}/storage/v1/object/public/sms-media/`
+  const mediaUrls = (Array.isArray(body.mediaUrls) ? body.mediaUrls : [])
+    .map((u) => String(u || ''))
+    .filter((u) => u.startsWith(mediaPrefix))
+
+  if (!message && !mediaUrls.length) return NextResponse.json({ error: 'Message is blank.' }, { status: 400 })
 
   // Resolve the recipient number: a chosen customer's stored mobile, or a typed
   // number for someone not in the system yet.
@@ -51,7 +59,8 @@ export async function POST(request: NextRequest) {
     body: message,
     brand,
     customerId: customerId || null,
-    sentBy: me.id
+    sentBy: me.id,
+    mediaUrls
   })
 
   if (!result.ok) return NextResponse.json({ error: result.reason }, { status: 502 })

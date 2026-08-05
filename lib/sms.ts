@@ -71,7 +71,7 @@ export function buildMessage(order: OrderRow, templateText: string, merchant?: M
 // Send an SMS. When `brand` is given, the message goes out through THAT brand's
 // MessageMedia account (its own API key/secret and sender number); otherwise the
 // legacy single-account env vars are used.
-export async function sendMessageMediaSms(toMobile: string, message: string, brand?: Brand) {
+export async function sendMessageMediaSms(toMobile: string, message: string, brand?: Brand, mediaUrls?: string[]) {
   const cfg = brand ? brandConfig(brand) : null
   const apiKey = cfg?.smsApiKey || process.env.MESSAGEMEDIA_API_KEY
   const apiSecret = cfg?.smsApiSecret || process.env.MESSAGEMEDIA_API_SECRET
@@ -80,11 +80,14 @@ export async function sendMessageMediaSms(toMobile: string, message: string, bra
 
   if (!apiKey || !apiSecret) throw new Error('Missing MessageMedia credentials')
 
-  const sms: Record<string, string> = {
+  const hasMedia = Array.isArray(mediaUrls) && mediaUrls.length > 0
+  // With an image attached, send as MMS (media by public URL); otherwise SMS.
+  const sms: Record<string, unknown> = {
     content: message,
     destination_number: normalizeMobileAu(toMobile),
-    format: 'SMS'
+    format: hasMedia ? 'MMS' : 'SMS'
   }
+  if (hasMedia) sms.media = mediaUrls
 
   if (senderId.trim()) sms.source_number = senderId.trim()
 
@@ -197,11 +200,13 @@ export async function sendStaffSms(params: {
   brand?: Brand
   customerId?: string | null
   sentBy?: string | null
+  mediaUrls?: string[]
 }): Promise<{ ok: boolean; reason: string; messageId?: string }> {
   const mobile = String(params.toPhone || '').trim()
   const text = String(params.body || '').trim()
+  const media = (params.mediaUrls || []).filter((u) => typeof u === 'string' && u.trim())
   if (!mobile) return { ok: false, reason: 'No mobile number.' }
-  if (!text) return { ok: false, reason: 'Message is blank.' }
+  if (!text && !media.length) return { ok: false, reason: 'Message is blank.' }
 
   const base = {
     customer_id: params.customerId || null,
@@ -214,13 +219,15 @@ export async function sendStaffSms(params: {
     purpose: null,
     // Stamp the store so each app's Messages inbox only shows its own threads.
     brand: params.brand || null,
+    // Any images attached (MMS).
+    media_urls: media.length ? media : null,
     // Record when the staff member hit send — BEFORE the provider round-trip —
     // so the message can't sort after a reply that the provider timestamps
     // during that ~200ms send call.
     created_at: new Date().toISOString()
   }
   try {
-    const messageId = await sendMessageMediaSms(mobile, text, params.brand)
+    const messageId = await sendMessageMediaSms(mobile, text, params.brand, media)
     await supabaseAdmin.from('sms_messages').insert({ ...base, status: 'sent', provider_message_id: messageId })
     return { ok: true, reason: `sent (${messageId})`, messageId }
   } catch (error) {

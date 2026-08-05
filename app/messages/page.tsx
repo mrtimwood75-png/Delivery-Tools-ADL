@@ -25,6 +25,45 @@ type ThreadMessage = {
   body: string
   status: string | null
   error: string | null
+  media_urls: string[] | null
+}
+
+// Downscale a pasted/selected image to keep MMS media small (max dimension +
+// JPEG re-encode), returning a Blob to upload.
+function downscaleImage(file: File, maxDim = 1024, quality = 0.8): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      let { width, height } = img
+      const longest = Math.max(width, height)
+      if (longest > maxDim) {
+        const scale = maxDim / longest
+        width = Math.round(width * scale)
+        height = Math.round(height * scale)
+      }
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return reject(new Error('Could not process image.'))
+      ctx.drawImage(img, 0, 0, width, height)
+      canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Could not process image.'))), 'image/jpeg', quality)
+    }
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('That file is not a valid image.')) }
+    img.src = url
+  })
+}
+
+async function uploadImage(file: File): Promise<string> {
+  const blob = await downscaleImage(file)
+  const form = new FormData()
+  form.append('file', blob, 'image.jpg')
+  const res = await fetch('/api/sms/upload', { method: 'POST', body: form })
+  const json = await res.json()
+  if (!res.ok) throw new Error(json.error || 'Upload failed.')
+  return json.url as string
 }
 
 function portalNameFor(brand: 'bca' | 'transforma' | null): string {
@@ -63,6 +102,34 @@ export default function MessagesPage() {
   // Rename (SMS-app contact name) state for the open thread.
   const [renaming, setRenaming] = useState(false)
   const [nameDraft, setNameDraft] = useState('')
+
+  // Pending image attachment (public URL) for each composer, plus upload state.
+  const [attachment, setAttachment] = useState<string | null>(null)
+  const [newAttachment, setNewAttachment] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
+
+  async function attachFile(file: File | null | undefined, target: 'reply' | 'new') {
+    if (!file) return
+    if (!file.type.startsWith('image/')) { setError('Only images can be attached.'); return }
+    setUploading(true)
+    setError('')
+    try {
+      const url = await uploadImage(file)
+      if (target === 'reply') setAttachment(url); else setNewAttachment(url)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Upload failed.')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  function handlePaste(e: React.ClipboardEvent, target: 'reply' | 'new') {
+    const item = Array.from(e.clipboardData?.items || []).find((i) => i.type.startsWith('image/'))
+    if (item) {
+      e.preventDefault()
+      attachFile(item.getAsFile(), target)
+    }
+  }
 
   const threadEndRef = useRef<HTMLDivElement | null>(null)
 
@@ -131,6 +198,8 @@ export default function MessagesPage() {
     setComposing(false)
     setRenaming(false)
     setError('')
+    setDraft('')
+    setAttachment(null)
     setSelected(conv)
     setMessages([])
     loadThread(conv)
@@ -160,18 +229,19 @@ export default function MessagesPage() {
   async function sendReply() {
     if (!selected) return
     const body = draft.trim()
-    if (!body) return
+    if (!body && !attachment) return
     setSending(true)
     setError('')
     try {
       const res = await fetch('/api/sms/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ customerId: selected.customerId || undefined, phone: selected.customerId ? undefined : selected.phone, body })
+        body: JSON.stringify({ customerId: selected.customerId || undefined, phone: selected.customerId ? undefined : selected.phone, body, mediaUrls: attachment ? [attachment] : [] })
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Send failed.')
       setDraft('')
+      setAttachment(null)
       await loadThread(selected)
       loadConversations()
     } catch (e) {
@@ -183,20 +253,20 @@ export default function MessagesPage() {
 
   async function sendNew(target: { customerId?: string; phone?: string; label: string }) {
     const body = newDraft.trim()
-    if (!body) { setError('Type a message first.'); return }
-    if (!target.customerId && !target.phone) { setError('Pick a customer or enter a mobile number.'); return }
+    if (!body && !newAttachment) { setError('Type a message or attach an image first.'); return }
+    if (!target.customerId && !target.phone) { setError('Enter a mobile number.'); return }
     setSending(true)
     setError('')
     try {
       const res = await fetch('/api/sms/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ customerId: target.customerId, phone: target.phone, body })
+        body: JSON.stringify({ customerId: target.customerId, phone: target.phone, body, mediaUrls: newAttachment ? [newAttachment] : [] })
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Send failed.')
       setComposing(false)
-      setNewDraft(''); setTypedNumber('')
+      setNewDraft(''); setTypedNumber(''); setNewAttachment(null)
       await loadConversations()
       openConversation({
         key: json.key,
@@ -262,7 +332,7 @@ export default function MessagesPage() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, gap: 12, flexWrap: 'wrap' }}>
           <button
             type="button"
-            onClick={() => { setComposing(true); setSelected(null); setError('') }}
+            onClick={() => { setComposing(true); setSelected(null); setError(''); setNewDraft(''); setTypedNumber(''); setNewAttachment(null) }}
             style={{ padding: '10px 18px', borderRadius: 10, border: 'none', background: '#1a1a1a', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
           >
             + New message
@@ -326,16 +396,29 @@ export default function MessagesPage() {
                 <input style={input} value={typedNumber} onChange={(e) => setTypedNumber(e.target.value)} inputMode="tel" placeholder="04xx xxx xxx" />
 
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#6b6b6b', margin: '16px 0 6px' }}>Message</label>
-                <textarea style={{ ...input, minHeight: 90, resize: 'vertical' }} value={newDraft} onChange={(e) => setNewDraft(e.target.value)} placeholder="Type your message…" />
+                <textarea style={{ ...input, minHeight: 90, resize: 'vertical' }} value={newDraft} onChange={(e) => setNewDraft(e.target.value)} onPaste={(e) => handlePaste(e, 'new')} placeholder="Type your message… (you can paste an image)" />
+
+                {newAttachment ? (
+                  <div style={{ marginTop: 10, display: 'inline-flex', alignItems: 'flex-start', gap: 8 }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={newAttachment} alt="attachment" style={{ maxWidth: 120, maxHeight: 120, borderRadius: 8, display: 'block' }} />
+                    <button type="button" onClick={() => setNewAttachment(null)} style={{ minHeight: 0, padding: '2px 8px', borderRadius: 8, border: '1px solid #d9d9d9', background: '#fff', color: '#1a1a1a', fontSize: 12, cursor: 'pointer' }}>Remove</button>
+                  </div>
+                ) : (
+                  <label style={{ marginTop: 10, display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: '#4a4a4a', cursor: 'pointer' }}>
+                    📎 Attach image
+                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { attachFile(e.target.files?.[0], 'new'); e.target.value = '' }} />
+                  </label>
+                )}
 
                 <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
                   <button
                     type="button"
                     onClick={() => sendNew({ phone: typedNumber.trim(), label: typedNumber.trim() })}
-                    disabled={sending || !newDraft.trim() || !typedNumber.trim()}
-                    style={{ padding: '11px 18px', borderRadius: 10, border: 'none', background: (sending || !newDraft.trim() || !typedNumber.trim()) ? '#bbb' : '#1a1a1a', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+                    disabled={sending || uploading || !typedNumber.trim() || (!newDraft.trim() && !newAttachment)}
+                    style={{ padding: '11px 18px', borderRadius: 10, border: 'none', background: (sending || uploading || !typedNumber.trim() || (!newDraft.trim() && !newAttachment)) ? '#bbb' : '#1a1a1a', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
                   >
-                    Send
+                    {uploading ? 'Uploading…' : 'Send'}
                   </button>
                   <button type="button" onClick={() => { setComposing(false); setError('') }} style={{ padding: '11px 18px', borderRadius: 10, border: '1px solid #d9d9d9', background: '#fff', color: '#1a1a1a', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
                 </div>
@@ -392,31 +475,53 @@ export default function MessagesPage() {
                           padding: '9px 13px', borderRadius: 14, fontSize: 14, lineHeight: 1.4, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                           background: out ? '#1a1a1a' : '#efeeec', color: out ? '#fff' : '#1a1a1a',
                           borderBottomRightRadius: out ? 4 : 14, borderBottomLeftRadius: out ? 14 : 4
-                        }}>{m.body}</div>
+                        }}>
+                          {(m.media_urls || []).map((url, i) => (
+                            /* eslint-disable-next-line @next/next/no-img-element */
+                            <a key={i} href={url} target="_blank" rel="noreferrer" style={{ display: 'block' }}>
+                              <img src={url} alt="attachment" style={{ maxWidth: 220, maxHeight: 260, width: 'auto', borderRadius: 10, display: 'block', marginBottom: m.body && m.body !== '📷 Image' ? 6 : 0 }} />
+                            </a>
+                          ))}
+                          {m.body && m.body !== '📷 Image' ? m.body : null}
+                        </div>
                         <div style={{ fontSize: 10.5, color: '#a5a5a5', marginTop: 3, textAlign: out ? 'right' : 'left' }}>
-                          {timeLabel(m.created_at)}{out && m.status ? ` · ${m.status}` : ''}{m.error ? ` · ${m.error}` : ''}
+                          {timeLabel(m.created_at)}{out && m.status ? ` · ${m.status}` : ''}{out && m.error ? ` · ${m.error}` : ''}
                         </div>
                       </div>
                     )
                   })}
                   <div ref={threadEndRef} />
                 </div>
-                <div style={{ padding: 14, borderTop: '1px solid #f0efed', display: 'flex', gap: 10, alignItems: 'flex-end' }}>
-                  <textarea
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); sendReply() } }}
-                    placeholder="Type a message… (Ctrl/⌘+Enter to send)"
-                    style={{ ...input, minHeight: 44, maxHeight: 140, resize: 'vertical', flex: 1 }}
-                  />
-                  <button
-                    type="button"
-                    onClick={sendReply}
-                    disabled={sending || !draft.trim()}
-                    style={{ padding: '12px 20px', borderRadius: 10, border: 'none', background: (sending || !draft.trim()) ? '#bbb' : '#1a1a1a', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
-                  >
-                    {sending ? 'Sending…' : 'Send'}
-                  </button>
+                <div style={{ padding: 14, borderTop: '1px solid #f0efed' }}>
+                  {attachment && (
+                    <div style={{ marginBottom: 10, display: 'inline-flex', alignItems: 'flex-start', gap: 8 }}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={attachment} alt="attachment" style={{ maxWidth: 120, maxHeight: 120, borderRadius: 8, display: 'block' }} />
+                      <button type="button" onClick={() => setAttachment(null)} style={{ minHeight: 0, padding: '2px 8px', borderRadius: 8, border: '1px solid #d9d9d9', background: '#fff', color: '#1a1a1a', fontSize: 12, cursor: 'pointer' }}>Remove</button>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
+                    <label title="Attach image" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 44, height: 44, borderRadius: 10, border: '1px solid #d9d9d9', background: '#fff', fontSize: 18, cursor: 'pointer', flexShrink: 0 }}>
+                      📎
+                      <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { attachFile(e.target.files?.[0], 'reply'); e.target.value = '' }} />
+                    </label>
+                    <textarea
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      onPaste={(e) => handlePaste(e, 'reply')}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); sendReply() } }}
+                      placeholder="Type a message… (paste an image, Ctrl/⌘+Enter to send)"
+                      style={{ ...input, minHeight: 44, maxHeight: 140, resize: 'vertical', flex: 1 }}
+                    />
+                    <button
+                      type="button"
+                      onClick={sendReply}
+                      disabled={sending || uploading || (!draft.trim() && !attachment)}
+                      style={{ padding: '12px 20px', borderRadius: 10, border: 'none', background: (sending || uploading || (!draft.trim() && !attachment)) ? '#bbb' : '#1a1a1a', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      {uploading ? 'Uploading…' : sending ? 'Sending…' : 'Send'}
+                    </button>
+                  </div>
                 </div>
               </>
             ) : (
