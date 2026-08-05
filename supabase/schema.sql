@@ -201,6 +201,17 @@ create table if not exists public.sms_contacts (
 );
 alter table public.sms_contacts enable row level security;
 
+-- Per-staff "delete" (hide) of a Messages conversation. Non-destructive: the
+-- sms_messages rows stay; this only removes the thread from that staff member's
+-- inbox, and it reappears if a message newer than hidden_at arrives.
+create table if not exists public.sms_hidden_threads (
+  user_id uuid not null references public.app_users(id) on delete cascade,
+  phone text not null,
+  hidden_at timestamptz not null default now(),
+  primary key (user_id, phone)
+);
+alter table public.sms_hidden_threads enable row level security;
+
 alter table public.sms_messages enable row level security;
 
 create policy "Allow authenticated users to read sms messages"

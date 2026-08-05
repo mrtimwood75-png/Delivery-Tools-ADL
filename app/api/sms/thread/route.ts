@@ -60,3 +60,20 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({ name, customerId: customerId || null, phone: convPhone || null, messages: messages || [] })
 }
+
+// "Delete" a conversation from the caller's inbox — a per-staff hide, not a
+// destructive delete (the sms_messages rows are shared with the dashboard/order
+// history). The thread reappears if a newer message arrives.
+export async function DELETE(request: NextRequest) {
+  const me = await getRequestAppUser()
+  if (!me) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const phone = normalizeMobileAu(new URL(request.url).searchParams.get('phone') || '')
+  if (!phone) return NextResponse.json({ error: 'Missing phone.' }, { status: 400 })
+
+  const { error } = await supabaseAdmin
+    .from('sms_hidden_threads')
+    .upsert({ user_id: me.id, phone, hidden_at: new Date().toISOString() }, { onConflict: 'user_id,phone' })
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ ok: true })
+}

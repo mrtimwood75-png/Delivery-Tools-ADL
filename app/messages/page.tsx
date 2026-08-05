@@ -225,6 +225,21 @@ export default function MessagesPage() {
     } catch { setNotifyEmail(!next) }
   }
 
+  // Remove this conversation from my inbox (per-staff hide, not a hard delete).
+  async function deleteThread() {
+    if (!selected?.phone) return
+    if (!window.confirm('Remove this conversation from your inbox? It will come back only if this number messages you again.')) return
+    try {
+      const res = await fetch(`/api/sms/thread?phone=${encodeURIComponent(selected.phone)}`, { method: 'DELETE' })
+      if (!res.ok) { const j = await res.json(); throw new Error(j.error || 'Could not delete.') }
+      setConversations((prev) => prev.filter((c) => c.key !== selected.key))
+      setSelected(null)
+      setMessages([])
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not delete.')
+    }
+  }
+
   const totalUnread = useMemo(() => conversations.reduce((s, c) => s + (c.unread || 0), 0), [conversations])
 
   // ---- styles ----
@@ -348,13 +363,23 @@ export default function MessagesPage() {
                         <div style={{ fontWeight: 700, fontSize: 15 }}>{selected.name}</div>
                         {selected.name !== selected.phone && <div style={{ fontSize: 12, color: '#9a9a9a' }}>{selected.phone}</div>}
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => { setNameDraft(selected.name === selected.phone ? '' : selected.name); setRenaming(true) }}
-                        style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #dcdbd8', background: '#fff', fontSize: 12, fontWeight: 600, color: '#4a4a4a', cursor: 'pointer', whiteSpace: 'nowrap' }}
-                      >
-                        {selected.name === selected.phone ? 'Add name' : 'Edit name'}
-                      </button>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                          type="button"
+                          onClick={() => { setNameDraft(selected.name === selected.phone ? '' : selected.name); setRenaming(true) }}
+                          style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #dcdbd8', background: '#fff', fontSize: 12, fontWeight: 600, color: '#4a4a4a', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                        >
+                          {selected.name === selected.phone ? 'Add name' : 'Edit name'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={deleteThread}
+                          title="Remove this conversation from your inbox"
+                          style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #ecc7c7', background: '#fff', fontSize: 12, fontWeight: 600, color: '#b3261e', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>

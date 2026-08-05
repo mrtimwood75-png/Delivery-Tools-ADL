@@ -122,6 +122,20 @@ export async function GET(request: NextRequest) {
     if (m.direction === 'inbound' && !m.read_at) conv.unread += 1
   }
 
-  const conversations = Array.from(byKey.values()).sort((a, b) => (a.lastAt < b.lastAt ? 1 : -1))
+  // Drop threads the caller has hidden ("deleted" from their inbox), unless a
+  // newer message has arrived since they hid it (so a fresh reply isn't lost).
+  const { data: hidden } = await supabaseAdmin
+    .from('sms_hidden_threads')
+    .select('phone, hidden_at')
+    .eq('user_id', me.id)
+  const hiddenByPhone = new Map<string, string>()
+  for (const h of hidden || []) hiddenByPhone.set(String(h.phone), String(h.hidden_at))
+
+  const conversations = Array.from(byKey.values())
+    .filter((c) => {
+      const h = c.phone ? hiddenByPhone.get(c.phone) : undefined
+      return !h || new Date(c.lastAt).getTime() > new Date(h).getTime()
+    })
+    .sort((a, b) => (a.lastAt < b.lastAt ? 1 : -1))
   return NextResponse.json({ conversations })
 }
