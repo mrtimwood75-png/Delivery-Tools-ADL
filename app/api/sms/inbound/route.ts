@@ -168,12 +168,12 @@ async function handleReply(reply: AnyRecord, origin: string) {
     if (dupe) return false
   }
   const normalizedPhone = normalizeMobileAu(source)
-  const dateRaw = pick(reply, ['date_received', 'timestamp', 'received_timestamp', 'date'])
-  // A reply can't have arrived in the future: clamp the provider timestamp to now
-  // so a skewed provider clock can't sort the reply after our later messages.
-  const now = Date.now()
-  const parsed = dateRaw ? new Date(dateRaw).getTime() : NaN
-  const date = new Date(Number.isNaN(parsed) ? now : Math.min(parsed, now)).toISOString()
+  // Store the reply at OUR server-receipt time, not the provider's timestamp.
+  // A reply always arrives after the message it answers, and our outbound sends
+  // are stamped on this same clock — so this keeps every thread in causal order.
+  // The provider (MessageMedia) clock can run behind ours and otherwise sort a
+  // reply above the very text that prompted it.
+  const date = new Date().toISOString()
 
   const { customer_id, order_id, template_id } = await findCustomer(normalizedPhone, originalMessageId)
 
