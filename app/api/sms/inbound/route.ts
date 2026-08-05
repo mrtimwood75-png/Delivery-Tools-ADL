@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { normalizeMobileAu } from '@/lib/format'
 import { runReplyAutomations } from '@/lib/automations'
 import { sendEmail } from '@/lib/email'
+import { brandConfig, type Brand } from '@/lib/brand'
 
 // Emails the staff member who owns this conversation (the last person to text
 // this customer/number, per sms_messages.sent_by) that a reply came in — if they
@@ -22,21 +23,22 @@ async function notifyOwningStaff(customerId: string | null, phone: string, conte
     // combined .or() filter.
     const ownerBase = () => supabaseAdmin
       .from('sms_messages')
-      .select('sent_by, created_at')
+      .select('sent_by, created_at, brand')
       .eq('direction', 'outbound')
       .is('order_id', null)
       .is('template_id', null)
       .not('sent_by', 'is', null)
       .order('created_at', { ascending: false })
       .limit(1)
-    const candidates: Array<{ sent_by: string; created_at: string }> = []
+    type Owner = { sent_by: string; created_at: string; brand: string | null }
+    const candidates: Owner[] = []
     if (customerId) {
       const { data } = await ownerBase().eq('customer_id', customerId)
-      if (data?.[0]) candidates.push(data[0] as { sent_by: string; created_at: string })
+      if (data?.[0]) candidates.push(data[0] as Owner)
     }
     if (phone) {
       const { data } = await ownerBase().eq('phone', phone)
-      if (data?.[0]) candidates.push(data[0] as { sent_by: string; created_at: string })
+      if (data?.[0]) candidates.push(data[0] as Owner)
     }
     candidates.sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
     const sentBy = candidates[0]?.sent_by
@@ -54,11 +56,20 @@ async function notifyOwningStaff(customerId: string | null, phone: string, conte
 
     const who = phone || 'a customer'
     const link = `${origin.replace(/\/$/, '')}/messages`
+    // Send from the owning store's verified sender (the same one the paid-
+    // confirmation emails use), since EMAIL_FROM isn't set globally. Fall back to
+    // whichever store's sender is configured.
+    const ownerBrand = candidates[0]?.brand as Brand | null
+    const from = (ownerBrand ? brandConfig(ownerBrand).emailFrom : '')
+      || brandConfig('transforma').emailFrom
+      || brandConfig('bca').emailFrom
+      || undefined
     try {
       await sendEmail({
         to: staff.email as string,
         subject: `New SMS reply from ${who}`,
-        text: `${who} replied:\n\n"${content}"\n\nOpen your messages to reply:\n${link}\n\n(You're getting this because you last texted this number. Turn these off in Messages.)`
+        text: `${who} replied:\n\n"${content}"\n\nOpen your messages to reply:\n${link}\n\n(You're getting this because you last texted this number. Turn these off in Messages.)`,
+        from
       })
       return `notify: emailed ${staff.email}`
     } catch (sendError) {
