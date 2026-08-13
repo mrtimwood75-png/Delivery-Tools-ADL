@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { IconBell, IconBellOff } from '@/components/ui'
 
 // Top navigation shared by the Payments and Messages tools so staff can move
 // between them without re-logging in (same deployment, same session). The
@@ -9,6 +10,7 @@ import { useEffect, useRef, useState } from 'react'
 export default function PortalNav({ active }: { active: 'payments' | 'messages' }) {
   const [unread, setUnread] = useState(0)
   const [muted, setMuted] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
   const prevUnread = useRef<number | null>(null)
   const audioRef = useRef<AudioContext | null>(null)
   const mutedRef = useRef(false)
@@ -80,6 +82,17 @@ export default function PortalNav({ active }: { active: 'payments' | 'messages' 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Show the Admin link only to admins.
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/me', { cache: 'no-store' })
+        const me = await res.json()
+        if (res.ok) setIsAdmin(!!me.isAdmin)
+      } catch { /* ignore */ }
+    })()
+  }, [])
+
   function toggleMute() {
     const next = !muted
     setMuted(next)
@@ -114,6 +127,7 @@ export default function PortalNav({ active }: { active: 'payments' | 'messages' 
     <nav style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 10, marginBottom: 22 }}>
       {tab('Payments', '/payment-link', active === 'payments')}
       {tab('Messages', '/messages', active === 'messages', unread)}
+      {isAdmin ? tab('Admin', '/admin', false) : null}
       <button
         type="button"
         onClick={toggleMute}
@@ -122,10 +136,10 @@ export default function PortalNav({ active }: { active: 'payments' | 'messages' 
         style={{
           width: 34, height: 34, minHeight: 0, padding: 0, borderRadius: 999,
           border: '1px solid #dcdbd8', background: 'transparent', color: '#4a4a4a',
-          fontSize: 15, cursor: 'pointer', lineHeight: 1
+          cursor: 'pointer', lineHeight: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center'
         }}
       >
-        {muted ? '🔇' : '🔔'}
+        {muted ? <IconBellOff size={16} /> : <IconBell size={16} />}
       </button>
     </nav>
   )

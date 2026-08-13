@@ -61,8 +61,6 @@ export default function PaymentLinkPage() {
   const [result, setResult] = useState<{ url: string; deliveryStatus: string | null } | null>(null)
   const [recent, setRecent] = useState<RecentLink[]>([])
 
-  const [isAdmin, setIsAdmin] = useState(false)
-
   // This one deployment serves both payment brands by host: show only that
   // brand's salespeople, and title the tab for that brand.
   const [hostBrand, setHostBrand] = useState<'bca' | 'transforma' | null>(null)
@@ -81,15 +79,6 @@ export default function PaymentLinkPage() {
     () => (hostBrand ? salespeople.filter((s) => s.brand === hostBrand) : salespeople).filter((s) => !s.exclude_from_payment_app),
     [salespeople, hostBrand]
   )
-
-  async function loadIsAdmin() {
-    try {
-      // Identity comes from the session cookie server-side; no localStorage race.
-      const res = await fetch('/api/me', { headers: await authHeader() })
-      const me = await res.json()
-      if (res.ok) setIsAdmin(!!me.isAdmin)
-    } catch { /* ignore */ }
-  }
 
   async function loadRecent() {
     try {
@@ -110,7 +99,6 @@ export default function PaymentLinkPage() {
   useEffect(() => {
     loadSalespeople()
     loadRecent()
-    loadIsAdmin()
   }, [])
 
   function pickSalesperson(id: string) {
@@ -164,16 +152,13 @@ export default function PaymentLinkPage() {
   }
 
   const label: React.CSSProperties = { display: 'block', fontSize: 12, fontWeight: 600, letterSpacing: '.04em', textTransform: 'uppercase', color: '#6b6b6b', marginBottom: 6 }
-  const input: React.CSSProperties = { width: '100%', padding: '11px 13px', border: '1px solid #d9d9d9', borderRadius: 8, fontSize: 15, background: '#fff', boxSizing: 'border-box' }
+  const input: React.CSSProperties = { width: '100%', padding: '11px 13px', border: '1px solid #d3ccbe', borderRadius: 8, fontSize: 15, background: '#fff', boxSizing: 'border-box', fontVariantNumeric: 'tabular-nums' }
   const field: React.CSSProperties = { marginBottom: 18 }
 
   return (
     <div style={{ minHeight: '100vh', background: '#f4f3f1', fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif', color: '#1a1a1a' }}>
       <div style={{ maxWidth: 560, margin: '0 auto', padding: '40px 20px 80px' }}>
-        <header style={{ textAlign: 'center', marginBottom: 28, position: 'relative' }}>
-          {isAdmin && (
-            <a href="/admin" style={{ position: 'absolute', top: 0, right: 0, fontSize: 13, fontWeight: 600, color: '#1a1a1a', textDecoration: 'underline' }}>Admin</a>
-          )}
+        <header style={{ textAlign: 'center', marginBottom: 28 }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <div style={{ marginBottom: 18 }}><BrandLogos height={26} /></div>
           <PortalNav active="payments" />
@@ -252,7 +237,7 @@ export default function PaymentLinkPage() {
                 <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderTop: i ? '1px solid #f0efed' : 'none' }}>
                   <div>
                     <div style={{ fontWeight: 600, fontSize: 14 }}>{r.customer_name}{r.order_number ? ` · ${r.order_number}` : ''}</div>
-                    <div style={{ fontSize: 12, color: '#8a8a8a' }}>{money(r.amount)} · {r.delivery_method === 'sms' ? 'SMS' : r.delivery_method === 'email' ? 'Email' : 'Link'}</div>
+                    <div style={{ fontSize: 12, color: '#6f6a61' }}>{money(r.amount)} · {r.delivery_method === 'sms' ? 'SMS' : r.delivery_method === 'email' ? 'Email' : 'Link'}</div>
                   </div>
                   {(() => {
                     const badge = linkBadge(r)

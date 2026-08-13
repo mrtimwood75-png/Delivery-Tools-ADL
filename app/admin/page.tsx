@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import SmsTemplatesEditor from '@/components/SmsTemplatesEditor'
 import { FormEvent, useEffect, useState } from 'react'
 import BrandLogos from '@/components/BrandLogos'
 import { ASSIGNABLE_ROLES } from '@/lib/roles'
@@ -54,6 +55,7 @@ export default function AdminTemplatesPage() {
   const [newAuto, setNewAuto] = useState<NewAutomation>(emptyAuto)
   const [editingAutoId, setEditingAutoId] = useState<string | null>(null)
   const [editAuto, setEditAuto] = useState<NewAutomation>(emptyAuto)
+  const [tab, setTab] = useState<'general' | 'payments' | 'sms' | 'delivery'>('general')
 
   const isAdmin = myRole === 'admin'
 
@@ -392,7 +394,36 @@ export default function AdminTemplatesPage() {
           <Link href="/database" style={{ textDecoration: 'none' }}><button type="button">Back to Dashboard</button></Link>
         </div>
 
-        {isAdmin ? <section className="card grid" style={{ boxShadow: 'none' }}>
+        {isAdmin ? (
+          <div role="tablist" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', borderBottom: '1px solid var(--border)', paddingBottom: 0, marginTop: 4 }}>
+            {([
+              { key: 'general', label: 'General' },
+              { key: 'payments', label: 'Payment App' },
+              { key: 'sms', label: 'SMS Templates' },
+              { key: 'delivery', label: 'Delivery Dashboard' }
+            ] as { key: typeof tab; label: string }[]).map((t) => {
+              const active = tab === t.key
+              return (
+                <button
+                  key={t.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setTab(t.key)}
+                  style={{
+                    border: 'none', background: 'none', cursor: 'pointer', padding: '10px 16px', marginBottom: -1,
+                    fontSize: 14.5, fontWeight: active ? 700 : 600, color: active ? 'var(--foreground)' : '#8a8a8a',
+                    borderBottom: active ? '2px solid #1a1a1a' : '2px solid transparent'
+                  }}
+                >
+                  {t.label}
+                </button>
+              )
+            })}
+          </div>
+        ) : null}
+
+        {isAdmin && tab === 'general' ? <section className="card grid" style={{ boxShadow: 'none' }}>
           <h2 style={{ margin: 0 }}>Display Settings</h2>
           <label>
             Dashboard line spacing
@@ -403,7 +434,7 @@ export default function AdminTemplatesPage() {
           <p className="muted" style={{ margin: 0 }}>{densityOptions.find((option) => option.value === density)?.help}</p>
         </section> : null}
 
-        {isAdmin ? <section className="card grid" style={{ boxShadow: 'none' }}>
+        {isAdmin && tab === 'delivery' ? <section className="card grid" style={{ boxShadow: 'none' }}>
           <h2 style={{ margin: 0 }}>Customer Status Options</h2>
           <p className="muted" style={{ margin: 0 }}>One status per line. These populate the Customer Status dropdown on the dashboard.</p>
           <textarea value={customerStatuses} onChange={(event) => setCustomerStatuses(event.target.value)} style={{ minHeight: 150 }} />
@@ -411,7 +442,7 @@ export default function AdminTemplatesPage() {
         </section> : null}
 
 
-        {isAdmin ? <section className="card grid" style={{ boxShadow: 'none' }}>
+        {isAdmin && tab === 'delivery' ? <section className="card grid" style={{ boxShadow: 'none' }}>
           <h2 style={{ margin: 0 }}>Automations</h2>
           <p className="muted" style={{ margin: 0 }}>One place for all &quot;if this, then that&quot; rules. Pick a <strong>trigger</strong> (a template being sent, or a customer reply) and the <strong>actions</strong> that follow (set the customer status, the delivery light, the prep status, and/or auto-send a template). For replies, rules run <strong>top to bottom and the first match wins</strong> — use the arrows to order them.</p>
 
@@ -457,7 +488,7 @@ export default function AdminTemplatesPage() {
           </div>
         </section> : null}
 
-        {isAdmin ? <section className="card grid" style={{ boxShadow: 'none' }}>
+        {isAdmin && tab === 'general' ? <section className="card grid" style={{ boxShadow: 'none' }}>
           <h2 style={{ margin: 0 }}>Users</h2>
           <form className="grid grid-2" onSubmit={saveUser}>
             <label>Email<input value={newUserEmail} onChange={(event) => setNewUserEmail(event.target.value)} required /></label>
@@ -485,7 +516,7 @@ export default function AdminTemplatesPage() {
           </div>
         </section> : null}
 
-        {isAdmin ? <section className="card grid" style={{ boxShadow: 'none', border: '2px solid #1a1a1a' }}>
+        {isAdmin && tab === 'payments' ? <section className="card grid" style={{ boxShadow: 'none', border: '2px solid #1a1a1a' }}>
           <h2 style={{ margin: 0 }}>Payment App · Message Templates</h2>
           <p className="muted" style={{ margin: 0 }}>These belong to the <strong>Payment App</strong> only (kept separate from the Delivery Dashboard templates below).</p>
           <label>Customer SMS (sent with the payment link)
@@ -506,13 +537,13 @@ export default function AdminTemplatesPage() {
           <button type="button" onClick={savePaymentTemplates}>Save Payment App Templates</button>
         </section> : null}
 
-        {isAdmin ? <section className="card grid" style={{ boxShadow: 'none' }}>
-          <h2 style={{ margin: 0 }}>Delivery Dashboard · SMS Templates</h2>
-          <p className="muted" style={{ margin: 0 }}>These are the <strong>Delivery Dashboard</strong> notification templates (order/delivery messages) — separate from the Payment App templates above.</p>
-          <Link href="/templates" style={{ textDecoration: 'none' }}><button type="button">Open Dashboard SMS Templates</button></Link>
+        {isAdmin && tab === 'sms' ? <section className="card grid" style={{ boxShadow: 'none' }}>
+          <h2 style={{ margin: 0 }}>SMS Templates</h2>
+          <p className="muted" style={{ margin: 0 }}>Named notification templates used by the Delivery Dashboard and automations — order/delivery messages, the payment-received SMS, and more. (The Payment App&apos;s own link &amp; success SMS live under the <strong>Payment App</strong> tab.)</p>
+          <SmsTemplatesEditor />
         </section> : null}
 
-        {isAdmin ? <section className="card grid" style={{ boxShadow: 'none' }}>
+        {isAdmin && tab === 'general' ? <section className="card grid" style={{ boxShadow: 'none' }}>
           <h2 style={{ margin: 0 }}>Salespeople</h2>
           <p className="muted" style={{ margin: 0 }}>Record each salesperson&apos;s <strong>code</strong>, <strong>name</strong> and <strong>email</strong>, grouped by store. Codes appear here automatically from imports (the Transforma sync&apos;s AREA code, e.g. &quot;SS&quot;, and the BCA Tour Totals &quot;Recipient&quot; column) and are tagged with the store they came from. The <strong>name</strong> you enter is what shows on the dashboard in place of the code; the <strong>email</strong> is used for the delivery notification and the dashboard&apos;s email button. Use the <strong>Store</strong> dropdown to move anyone who lands in the wrong group.</p>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
@@ -544,7 +575,7 @@ export default function AdminTemplatesPage() {
           })}
         </section> : null}
 
-        {isAdmin ? <section className="card grid" style={{ boxShadow: 'none' }}>
+        {isAdmin && tab === 'general' ? <section className="card grid" style={{ boxShadow: 'none' }}>
           <h2 style={{ margin: 0 }}>Merchant details</h2>
           <p className="muted" style={{ margin: 0 }}>Customer-facing details for each brand, used in SMS templates (the <code>{'{merchant_*}'}</code> fields) and the payment success page. Leave a field blank to use the deployment&apos;s configured default. <strong>These are not secrets</strong> — Stripe/SMS keys still live in the hosting environment.</p>
           <div className="grid grid-2">
@@ -575,7 +606,7 @@ export default function AdminTemplatesPage() {
           </div>
         </section> : null}
 
-        {isAdmin ? <section className="card grid" style={{ boxShadow: 'none' }}>
+        {isAdmin && tab === 'delivery' ? <section className="card grid" style={{ boxShadow: 'none' }}>
           <h2 style={{ margin: 0 }}>Delivery Email to Salesperson</h2>
           <p className="muted" style={{ margin: 0 }}>When an order&apos;s status is set to &quot;Delivered&quot;, email its salesperson (using their email from the table above). Requires the email service to be configured.</p>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700 }}>

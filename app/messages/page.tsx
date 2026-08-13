@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import BrandLogos from '@/components/BrandLogos'
 import PortalNav from '@/components/PortalNav'
 import { paymentBrandForHost } from '@/lib/host'
+import { IconPaperclip } from '@/components/ui'
 
 type Conversation = {
   key: string
@@ -89,8 +90,6 @@ export default function MessagesPage() {
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
-
-  const [isAdmin, setIsAdmin] = useState(false)
   const [notifyEmail, setNotifyEmail] = useState(true)
   const [hostBrand, setHostBrand] = useState<'bca' | 'transforma' | null>(null)
 
@@ -164,11 +163,6 @@ export default function MessagesPage() {
   }, [])
 
   async function loadMe() {
-    try {
-      const res = await fetch('/api/me', { cache: 'no-store' })
-      const me = await res.json()
-      if (res.ok) setIsAdmin(!!me.isAdmin)
-    } catch { /* ignore */ }
     try {
       const res = await fetch('/api/sms/notify-pref', { cache: 'no-store' })
       const json = await res.json()
@@ -314,15 +308,12 @@ export default function MessagesPage() {
 
   // ---- styles ----
   const card: React.CSSProperties = { background: '#fff', borderRadius: 14, boxShadow: '0 1px 3px rgba(0,0,0,.08)' }
-  const input: React.CSSProperties = { width: '100%', padding: '11px 13px', border: '1px solid #d9d9d9', borderRadius: 8, fontSize: 15, background: '#fff', boxSizing: 'border-box' }
+  const input: React.CSSProperties = { width: '100%', padding: '11px 13px', border: '1px solid #d3ccbe', borderRadius: 8, fontSize: 15, background: '#fff', boxSizing: 'border-box', fontVariantNumeric: 'tabular-nums' }
 
   return (
     <div style={{ minHeight: '100vh', background: '#f4f3f1', fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif', color: '#1a1a1a' }}>
       <div style={{ maxWidth: 920, margin: '0 auto', padding: '32px 16px 60px' }}>
-        <header style={{ textAlign: 'center', marginBottom: 20, position: 'relative' }}>
-          {isAdmin && (
-            <a href="/admin" style={{ position: 'absolute', top: 0, right: 0, fontSize: 13, fontWeight: 600, color: '#1a1a1a', textDecoration: 'underline' }}>Admin</a>
-          )}
+        <header style={{ textAlign: 'center', marginBottom: 20 }}>
           <div style={{ marginBottom: 16 }}><BrandLogos height={24} /></div>
           <PortalNav active="messages" />
           <h1 style={{ fontSize: 20, fontWeight: 600, margin: 0 }}>{portalNameFor(hostBrand)}</h1>
@@ -353,7 +344,7 @@ export default function MessagesPage() {
               {totalUnread > 0 && <span style={{ color: '#d64545' }}>{totalUnread} unread</span>}
             </div>
             {conversations.length === 0 ? (
-              <div style={{ padding: 20, fontSize: 13, color: '#8a8a8a' }}>No conversations yet. Start one with “New message”.</div>
+              <div style={{ padding: 20, fontSize: 13, color: '#6f6a61' }}>No conversations yet. Start one with “New message”.</div>
             ) : (
               <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
                 {conversations.map((c) => (
@@ -371,10 +362,10 @@ export default function MessagesPage() {
                       <span style={{ fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {c.name}
                       </span>
-                      <span style={{ fontSize: 11, color: '#9a9a9a', whiteSpace: 'nowrap' }}>{timeLabel(c.lastAt)}</span>
+                      <span style={{ fontSize: 11, color: '#6f6a61', whiteSpace: 'nowrap' }}>{timeLabel(c.lastAt)}</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 3 }}>
-                      <span style={{ fontSize: 12, color: '#8a8a8a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <span style={{ fontSize: 12, color: '#6f6a61', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {c.lastDirection === 'outbound' ? 'You: ' : ''}{c.lastBody}
                       </span>
                       {c.unread > 0 && (
@@ -402,11 +393,11 @@ export default function MessagesPage() {
                   <div style={{ marginTop: 10, display: 'inline-flex', alignItems: 'flex-start', gap: 8 }}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={newAttachment} alt="attachment" style={{ maxWidth: 120, maxHeight: 120, borderRadius: 8, display: 'block' }} />
-                    <button type="button" onClick={() => setNewAttachment(null)} style={{ minHeight: 0, padding: '2px 8px', borderRadius: 8, border: '1px solid #d9d9d9', background: '#fff', color: '#1a1a1a', fontSize: 12, cursor: 'pointer' }}>Remove</button>
+                    <button type="button" onClick={() => setNewAttachment(null)} style={{ minHeight: 0, padding: '2px 8px', borderRadius: 8, border: '1px solid #d3ccbe', background: '#fff', color: '#1a1a1a', fontSize: 12, cursor: 'pointer' }}>Remove</button>
                   </div>
                 ) : (
                   <label style={{ marginTop: 10, display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: '#4a4a4a', cursor: 'pointer' }}>
-                    📎 Attach image
+                    <IconPaperclip size={15} />Attach image
                     <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { attachFile(e.target.files?.[0], 'new'); e.target.value = '' }} />
                   </label>
                 )}
@@ -420,9 +411,9 @@ export default function MessagesPage() {
                   >
                     {uploading ? 'Uploading…' : 'Send'}
                   </button>
-                  <button type="button" onClick={() => { setComposing(false); setError('') }} style={{ padding: '11px 18px', borderRadius: 10, border: '1px solid #d9d9d9', background: '#fff', color: '#1a1a1a', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+                  <button type="button" onClick={() => { setComposing(false); setError('') }} style={{ padding: '11px 18px', borderRadius: 10, border: '1px solid #d3ccbe', background: '#fff', color: '#1a1a1a', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
                 </div>
-                <p style={{ fontSize: 12, color: '#9a9a9a', marginTop: 12 }}>If the number belongs to an existing customer, your message threads with their replies automatically.</p>
+                <p style={{ fontSize: 12, color: '#6f6a61', marginTop: 12 }}>If the number belongs to an existing customer, your message threads with their replies automatically.</p>
               </div>
             ) : selected ? (
               <>
@@ -438,13 +429,13 @@ export default function MessagesPage() {
                         placeholder="Contact name (leave blank to show the number)"
                       />
                       <button type="button" onClick={saveName} style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: '#1a1a1a', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Save</button>
-                      <button type="button" onClick={() => setRenaming(false)} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #d9d9d9', background: '#fff', color: '#1a1a1a', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+                      <button type="button" onClick={() => setRenaming(false)} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #d3ccbe', background: '#fff', color: '#1a1a1a', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
                     </div>
                   ) : (
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
                       <div>
                         <div style={{ fontWeight: 700, fontSize: 15 }}>{selected.name}</div>
-                        {selected.name !== selected.phone && <div style={{ fontSize: 12, color: '#9a9a9a' }}>{selected.phone}</div>}
+                        {selected.name !== selected.phone && <div style={{ fontSize: 12, color: '#6f6a61' }}>{selected.phone}</div>}
                       </div>
                       <div style={{ display: 'flex', gap: 8 }}>
                         <button
@@ -497,12 +488,12 @@ export default function MessagesPage() {
                     <div style={{ marginBottom: 10, display: 'inline-flex', alignItems: 'flex-start', gap: 8 }}>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={attachment} alt="attachment" style={{ maxWidth: 120, maxHeight: 120, borderRadius: 8, display: 'block' }} />
-                      <button type="button" onClick={() => setAttachment(null)} style={{ minHeight: 0, padding: '2px 8px', borderRadius: 8, border: '1px solid #d9d9d9', background: '#fff', color: '#1a1a1a', fontSize: 12, cursor: 'pointer' }}>Remove</button>
+                      <button type="button" onClick={() => setAttachment(null)} style={{ minHeight: 0, padding: '2px 8px', borderRadius: 8, border: '1px solid #d3ccbe', background: '#fff', color: '#1a1a1a', fontSize: 12, cursor: 'pointer' }}>Remove</button>
                     </div>
                   )}
                   <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
-                    <label title="Attach image" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 44, height: 44, borderRadius: 10, border: '1px solid #d9d9d9', background: '#fff', fontSize: 18, cursor: 'pointer', flexShrink: 0 }}>
-                      📎
+                    <label title="Attach image" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 44, height: 44, borderRadius: 10, border: '1px solid #d3ccbe', background: '#fff', color: '#4a4a4a', cursor: 'pointer', flexShrink: 0 }}>
+                      <IconPaperclip size={18} />
                       <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { attachFile(e.target.files?.[0], 'reply'); e.target.value = '' }} />
                     </label>
                     <textarea
@@ -525,7 +516,7 @@ export default function MessagesPage() {
                 </div>
               </>
             ) : (
-              <div style={{ margin: 'auto', textAlign: 'center', color: '#9a9a9a', fontSize: 14, padding: 40 }}>
+              <div style={{ margin: 'auto', textAlign: 'center', color: '#6f6a61', fontSize: 14, padding: 40 }}>
                 Select a conversation, or start a new message.
               </div>
             )}
