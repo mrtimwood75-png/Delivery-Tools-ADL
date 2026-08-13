@@ -7,7 +7,7 @@ import { IconBell, IconBellOff } from '@/components/ui'
 // between them without re-logging in (same deployment, same session). The
 // Messages tab carries a badge with the caller's own unread reply count, and a
 // short ping sounds whenever that count goes up (a new customer reply arrived).
-export default function PortalNav({ active }: { active: 'payments' | 'messages' }) {
+export default function PortalNav({ active }: { active: 'payments' | 'messages' | 'order-tools' }) {
   const [unread, setUnread] = useState(0)
   const [muted, setMuted] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
@@ -127,6 +127,7 @@ export default function PortalNav({ active }: { active: 'payments' | 'messages' 
     <nav style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 10, marginBottom: 22 }}>
       {tab('Payments', '/payment-link', active === 'payments')}
       {tab('Messages', '/messages', active === 'messages', unread)}
+      {tab('Order Tools', '/order-tools', active === 'order-tools')}
       {isAdmin ? tab('Admin', '/admin', false) : null}
       <button
         type="button"

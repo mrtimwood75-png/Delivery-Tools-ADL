@@ -56,7 +56,16 @@ export default function AdminTemplatesPage() {
   const [newAuto, setNewAuto] = useState<NewAutomation>(emptyAuto)
   const [editingAutoId, setEditingAutoId] = useState<string | null>(null)
   const [editAuto, setEditAuto] = useState<NewAutomation>(emptyAuto)
-  const [tab, setTab] = useState<'general' | 'payments' | 'sms' | 'delivery'>('general')
+  const [tab, setTab] = useState<'general' | 'order' | 'payments' | 'sms' | 'delivery'>('general')
+  const [attachments, setAttachments] = useState<{ id: string; name: string; mode: 'always' | 'optional'; active: boolean }[]>([])
+  const [newAttName, setNewAttName] = useState('')
+  const [newAttMode, setNewAttMode] = useState<'always' | 'optional'>('optional')
+  const [newAttFile, setNewAttFile] = useState<File | null>(null)
+  const [attMsg, setAttMsg] = useState('')
+  const [uploadingAtt, setUploadingAtt] = useState(false)
+  const [emailTemplates, setEmailTemplates] = useState<{ id: string; name: string; subject: string; body: string; attachment_ids: string[]; active: boolean }[]>([])
+  const [newEt, setNewEt] = useState({ name: '', subject: '', body: '' })
+  const [etMsg, setEtMsg] = useState('')
 
   const isAdmin = myRole === 'admin'
 
@@ -71,7 +80,80 @@ export default function AdminTemplatesPage() {
     loadAutomations()
     loadTemplateList()
     loadPaymentTemplates()
+    loadAttachments()
+    loadEmailTemplates()
   }, [])
+
+  async function loadEmailTemplates() {
+    const response = await fetch('/api/order-email-templates', { cache: 'no-store' })
+    const json = await response.json()
+    if (response.ok) setEmailTemplates(json.templates || [])
+  }
+
+  async function addEmailTemplate() {
+    setEtMsg('')
+    if (!newEt.name.trim()) return setEtMsg('Enter a template name.')
+    const response = await fetch('/api/order-email-templates', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newEt) })
+    const json = await response.json()
+    if (!response.ok) return setEtMsg(json.error || 'Could not add template.')
+    setNewEt({ name: '', subject: '', body: '' })
+    setEtMsg('Saved.')
+    loadEmailTemplates()
+  }
+
+  async function patchEmailTemplate(id: string, patch: { name?: string; subject?: string; body?: string; attachment_ids?: string[]; active?: boolean }) {
+    const response = await fetch('/api/order-email-templates', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, ...patch }) })
+    const json = await response.json()
+    if (!response.ok) return setEtMsg(json.error || 'Update failed.')
+    loadEmailTemplates()
+  }
+
+  async function deleteEmailTemplate(id: string) {
+    const response = await fetch('/api/order-email-templates', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) })
+    const json = await response.json()
+    if (!response.ok) return setEtMsg(json.error || 'Delete failed.')
+    loadEmailTemplates()
+  }
+
+  async function loadAttachments() {
+    const response = await fetch('/api/order-attachments', { cache: 'no-store' })
+    const json = await response.json()
+    if (response.ok) setAttachments(json.attachments || [])
+  }
+
+  async function uploadAttachment() {
+    setAttMsg('')
+    if (!newAttFile) return setAttMsg('Choose a PDF to upload.')
+    setUploadingAtt(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', newAttFile)
+      fd.append('name', newAttName.trim() || newAttFile.name)
+      fd.append('mode', newAttMode)
+      const response = await fetch('/api/order-attachments', { method: 'POST', body: fd })
+      const json = await response.json()
+      if (!response.ok) return setAttMsg(json.error || 'Upload failed.')
+      setNewAttName(''); setNewAttFile(null); setNewAttMode('optional')
+      setAttMsg('Uploaded.')
+      loadAttachments()
+    } finally {
+      setUploadingAtt(false)
+    }
+  }
+
+  async function patchAttachment(id: string, patch: { name?: string; mode?: string; active?: boolean }) {
+    const response = await fetch('/api/order-attachments', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, ...patch }) })
+    const json = await response.json()
+    if (!response.ok) return setAttMsg(json.error || 'Update failed.')
+    loadAttachments()
+  }
+
+  async function deleteAttachment(id: string) {
+    const response = await fetch('/api/order-attachments', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) })
+    const json = await response.json()
+    if (!response.ok) return setAttMsg(json.error || 'Delete failed.')
+    loadAttachments()
+  }
 
   async function loadPaymentTemplates() {
     const response = await fetch('/api/payment-link/template', { cache: 'no-store' })
@@ -401,6 +483,7 @@ export default function AdminTemplatesPage() {
           <div role="tablist" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', borderBottom: '1px solid var(--border)', paddingBottom: 0, marginTop: 4 }}>
             {([
               { key: 'general', label: 'General' },
+              { key: 'order', label: 'Order Tools' },
               { key: 'payments', label: 'Payment App' },
               { key: 'sms', label: 'SMS Templates' },
               { key: 'delivery', label: 'Delivery Dashboard' }
@@ -435,6 +518,73 @@ export default function AdminTemplatesPage() {
             </select>
           </label>
           <p className="muted" style={{ margin: 0 }}>{densityOptions.find((option) => option.value === density)?.help}</p>
+        </section> : null}
+
+        {isAdmin && tab === 'order' ? <section className="card grid" style={{ boxShadow: 'none' }}>
+          <h2 style={{ margin: 0 }}>Order Tools Attachments</h2>
+          <p className="muted" style={{ margin: 0 }}>Pre-loaded PDFs that can be stitched onto branded order/quote documents in <strong>Order Tools</strong>. <strong>Always</strong> docs are added to every document automatically; <strong>Optional</strong> docs appear as a tick-box for staff to include when they want.</p>
+
+          {/* Upload */}
+          <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12, display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>
+            <label style={{ flex: '1 1 180px' }}>Display name<input value={newAttName} onChange={(e) => setNewAttName(e.target.value)} placeholder="e.g. Terms &amp; Conditions" /></label>
+            <label style={{ minWidth: 150 }}>Attach mode<select value={newAttMode} onChange={(e) => setNewAttMode(e.target.value as 'always' | 'optional')}><option value="optional">Optional (staff can add)</option><option value="always">Always (every document)</option></select></label>
+            <label style={{ flex: '1 1 200px' }}>PDF file<input type="file" accept="application/pdf" onChange={(e) => setNewAttFile(e.target.files?.[0] || null)} /></label>
+            <button type="button" onClick={uploadAttachment} disabled={uploadingAtt}>{uploadingAtt ? 'Uploading…' : 'Upload'}</button>
+            {attMsg && <span className="muted" style={{ flexBasis: '100%' }}>{attMsg}</span>}
+          </div>
+
+          {/* List */}
+          <div className="grid" style={{ gap: 8 }}>
+            {attachments.length ? attachments.map((a) => (
+              <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 12px', opacity: a.active ? 1 : 0.55 }}>
+                <input value={a.name} onChange={(e) => setAttachments((list) => list.map((x) => x.id === a.id ? { ...x, name: e.target.value } : x))} onBlur={(e) => patchAttachment(a.id, { name: e.target.value })} style={{ flex: '1 1 200px' }} />
+                <select value={a.mode} onChange={(e) => patchAttachment(a.id, { mode: e.target.value })} style={{ minWidth: 130 }}><option value="optional">Optional</option><option value="always">Always</option></select>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, whiteSpace: 'nowrap' }}><input type="checkbox" checked={a.active} onChange={(e) => patchAttachment(a.id, { active: e.target.checked })} />Active</label>
+                <button type="button" onClick={() => deleteAttachment(a.id)} style={{ color: '#b3261e', background: 'none', border: '1px solid #e3b0ac', borderRadius: 8, padding: '5px 10px', fontSize: 13, cursor: 'pointer' }}>Delete</button>
+              </div>
+            )) : <p className="muted" style={{ margin: 0 }}>No attachments yet. Upload your first common document above.</p>}
+          </div>
+        </section> : null}
+
+        {isAdmin && tab === 'order' ? <section className="card grid" style={{ boxShadow: 'none' }}>
+          <h2 style={{ margin: 0 }}>Order Tools Email Templates</h2>
+          <p className="muted" style={{ margin: 0 }}>Templates staff pick when emailing a customer their document. Merge fields: <code>{'{customer_name}'}</code>, <code>{'{order_number}'}</code>, <code>{'{salesperson_name}'}</code>, <code>{'{doc_type}'}</code>, <code>{'{amount}'}</code>. Each template can attach documents from the library above (the branded PDF is always attached; the salesperson is CC&apos;d).</p>
+
+          {/* Add */}
+          <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12, display: 'grid', gap: 8 }}>
+            <input value={newEt.name} onChange={(e) => setNewEt({ ...newEt, name: e.target.value })} placeholder="Template name (e.g. Send quotation)" />
+            <input value={newEt.subject} onChange={(e) => setNewEt({ ...newEt, subject: e.target.value })} placeholder="Subject — e.g. Your {doc_type} {order_number}" />
+            <textarea value={newEt.body} onChange={(e) => setNewEt({ ...newEt, body: e.target.value })} placeholder={'Body — e.g.\nHi {customer_name},\n\nPlease find your {doc_type} attached.\n\nKind regards,\n{salesperson_name}'} style={{ minHeight: 90 }} />
+            <div><button type="button" onClick={addEmailTemplate}>Add template</button> {etMsg && <span className="muted">{etMsg}</span>}</div>
+          </div>
+
+          {/* List */}
+          <div className="grid" style={{ gap: 12 }}>
+            {emailTemplates.length ? emailTemplates.map((t) => (
+              <div key={t.id} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12, display: 'grid', gap: 8, opacity: t.active ? 1 : 0.55 }}>
+                <input defaultValue={t.name} onBlur={(e) => patchEmailTemplate(t.id, { name: e.target.value })} placeholder="Template name" style={{ fontWeight: 700 }} />
+                <input defaultValue={t.subject} onBlur={(e) => patchEmailTemplate(t.id, { subject: e.target.value })} placeholder="Subject" />
+                <textarea defaultValue={t.body} onBlur={(e) => patchEmailTemplate(t.id, { body: e.target.value })} placeholder="Body" style={{ minHeight: 90 }} />
+                {attachments.length > 0 && (
+                  <div>
+                    <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Default attachments</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                      {attachments.filter((a) => a.active).map((a) => (
+                        <label key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13 }}>
+                          <input type="checkbox" checked={(t.attachment_ids || []).includes(a.id)} onChange={(e) => { const ids = new Set(t.attachment_ids || []); if (e.target.checked) ids.add(a.id); else ids.delete(a.id); patchEmailTemplate(t.id, { attachment_ids: [...ids] }) }} />
+                          {a.name}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13 }}><input type="checkbox" checked={t.active} onChange={(e) => patchEmailTemplate(t.id, { active: e.target.checked })} />Active</label>
+                  <button type="button" onClick={() => deleteEmailTemplate(t.id)} style={{ color: '#b3261e', background: 'none', border: '1px solid #e3b0ac', borderRadius: 8, padding: '5px 10px', fontSize: 13, cursor: 'pointer' }}>Delete</button>
+                </div>
+              </div>
+            )) : <p className="muted" style={{ margin: 0 }}>No templates yet. Add your first above.</p>}
+          </div>
         </section> : null}
 
         {isAdmin && tab === 'delivery' ? <section className="card grid" style={{ boxShadow: 'none' }}>
