@@ -19,11 +19,22 @@ import { brandConfig, type Brand } from '@/lib/brand'
 // the shared stripe_payments ledger row is acknowledged immediately so it never
 // shows on the dashboard. Either way the salesperson gets a confirmation email.
 async function confirmAdhocPaymentLink(session: Stripe.Checkout.Session, amountPaid: number, brand: Brand) {
-  const { data: link } = await supabaseAdmin
-    .from('payment_links')
-    .select('id, customer_name, customer_phone, order_number, salesperson_email, salesperson_name, status')
-    .eq('stripe_session_id', session.id)
-    .maybeSingle()
+  // Stable /pay/<id> links mint a fresh session on each visit, so the paid
+  // session may not be the one currently stored on the row. Attribute by the
+  // link id carried in the session metadata first; fall back to the session id
+  // for older links created before stable links existed.
+  const cols = 'id, customer_name, customer_phone, order_number, salesperson_email, salesperson_name, status'
+  const linkId = String(session.metadata?.payment_link_id || '').trim()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let link: any = null
+  if (linkId) {
+    const { data } = await supabaseAdmin.from('payment_links').select(cols).eq('id', linkId).maybeSingle()
+    link = data
+  }
+  if (!link) {
+    const { data } = await supabaseAdmin.from('payment_links').select(cols).eq('stripe_session_id', session.id).maybeSingle()
+    link = data
+  }
   if (!link) return false
 
   await supabaseAdmin

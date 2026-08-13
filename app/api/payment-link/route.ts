@@ -5,7 +5,7 @@ import { sendMessageMediaSms } from '@/lib/sms'
 import { formatAmountAu, normalizeMobileAu } from '@/lib/format'
 import { getRequestUser } from '@/lib/apiAuth'
 import { getSmsTemplate, renderSmsTemplate } from '@/lib/paymentMessage'
-import { stripeForBrand, resolveOrderBrand } from '@/lib/stripe'
+import { resolveOrderBrand } from '@/lib/stripe'
 import { brandConfig } from '@/lib/brand'
 import { paymentBrandForHost } from '@/lib/host'
 import { getMerchantConfig } from '@/lib/merchant'
@@ -42,69 +42,16 @@ export async function POST(request: NextRequest) {
     if (deliveryMethod === 'sms' && !customerPhone) return NextResponse.json({ error: 'Enter the customer mobile to send by SMS.' }, { status: 400 })
     if (deliveryMethod === 'email' && (!customerEmail || !isEmail(customerEmail))) return NextResponse.json({ error: 'Enter a valid customer email to send by email.' }, { status: 400 })
 
-    // Land the customer on our own branded success page (passing the session id
-    // so it can show what they paid). Derived from the request origin so it works
-    // on whatever domain the tool is served from.
-    const origin = request.headers.get('origin') || `https://${request.headers.get('host') || 'dashboard-adl.vercel.app'}`
-
-    // Charge through the Stripe account of the brand this order belongs to.
+    // The tool serves the customer a STABLE link (…/pay/<id>) rather than a raw
+    // 24h Stripe URL. Visiting it mints a fresh session on demand, so the link
+    // never dies. Derived from the request origin so it works on any domain.
+    const origin = process.env.PUBLIC_BASE_URL || request.headers.get('origin') || `https://${request.headers.get('host') || 'dashboard-adl.vercel.app'}`
     // On a payment host the brand is fixed by the domain; on the dashboard it
     // falls back to the order's own source.
     const brand = paymentBrandForHost(request.headers.get('host')) || await resolveOrderBrand(orderNumber)
     const brandCfg = brandConfig(brand)
-    const stripe = stripeForBrand(brand)
 
-    const session = await stripe.checkout.sessions.create({
-      mode: 'payment',
-      ...(orderNumber ? { client_reference_id: orderNumber } : {}),
-      line_items: [{
-        price_data: {
-          currency: 'aud',
-          product_data: {
-            name: orderNumber ? `Order ${orderNumber}` : `Payment from ${customerName}`,
-            description: `Payment for ${customerName}${orderNumber ? ` — order ${orderNumber}` : ''}`
-          },
-          unit_amount: Math.round(amount * 100)
-        },
-        quantity: 1
-      }],
-      success_url: `${origin}/pay/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: process.env.STRIPE_CANCEL_URL || 'https://boconcept.com.au',
-      metadata: {
-        kind: 'adhoc_payment_link',
-        customer_name: customerName,
-        order_number: orderNumber,
-        amount: String(amount),
-        salesperson_name: salespersonName,
-        salesperson_email: salespersonEmail
-      }
-    })
-
-    const stripeUrl = session.url || ''
-
-    // Deliver the link to the customer if requested.
-    let deliveryStatus: string | null = null
-    if (deliveryMethod === 'sms') {
-      const template = await getSmsTemplate()
-      const merchant = await getMerchantConfig(brand)
-      const message = renderSmsTemplate(template, { customerName, amount, orderNumber, link: stripeUrl, salespersonName }, merchant)
-      try {
-        const messageId = await sendMessageMediaSms(customerPhone, message, brand)
-        deliveryStatus = `SMS sent (${messageId})`
-      } catch (error) {
-        deliveryStatus = `SMS failed: ${error instanceof Error ? error.message : 'send failed'}`
-      }
-    } else if (deliveryMethod === 'email') {
-      const subject = orderNumber ? `Payment link for order ${orderNumber}` : `Your ${brandCfg.displayName} payment link`
-      const text = `Hi ${customerName},\n\nPlease use the secure link below to pay ${formatAmountAu(amount)}${orderNumber ? ` for order ${orderNumber}` : ''}:\n\n${stripeUrl}\n\nThank you,\n${salespersonName || brandCfg.displayName}`
-      try {
-        await sendEmail({ to: customerEmail, subject, text, from: brandCfg.emailFrom || undefined })
-        deliveryStatus = 'Email sent'
-      } catch (error) {
-        deliveryStatus = `Email failed: ${error instanceof Error ? error.message : 'send failed'}`
-      }
-    }
-
+    // Record the link first so we have its id to build the stable URL from.
     const { data: row, error } = await supabaseAdmin
       .from('payment_links')
       .insert({
@@ -116,25 +63,51 @@ export async function POST(request: NextRequest) {
         customer_phone: customerPhone ? normalizeMobileAu(customerPhone) : null,
         customer_email: customerEmail || null,
         delivery_method: deliveryMethod,
-        delivery_status: deliveryStatus,
-        stripe_session_id: session.id,
-        stripe_url: stripeUrl,
         status: 'pending',
         brand,
         created_by: createdBy
       })
-      .select('id, stripe_url, delivery_status')
+      .select('id')
       .single()
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error || !row) return NextResponse.json({ error: error?.message || 'Could not create payment link.' }, { status: 500 })
 
-    return NextResponse.json({ id: row.id, url: row.stripe_url, deliveryStatus: row.delivery_status })
+    const payUrl = `${origin}/pay/${row.id}`
+
+    // Deliver the stable link to the customer if requested.
+    let deliveryStatus: string | null = null
+    if (deliveryMethod === 'sms') {
+      const template = await getSmsTemplate()
+      const merchant = await getMerchantConfig(brand)
+      const message = renderSmsTemplate(template, { customerName, amount, orderNumber, link: payUrl, salespersonName }, merchant)
+      try {
+        const messageId = await sendMessageMediaSms(customerPhone, message, brand)
+        deliveryStatus = `SMS sent (${messageId})`
+      } catch (error) {
+        deliveryStatus = `SMS failed: ${error instanceof Error ? error.message : 'send failed'}`
+      }
+    } else if (deliveryMethod === 'email') {
+      const subject = orderNumber ? `Payment link for order ${orderNumber}` : `Your ${brandCfg.displayName} payment link`
+      const text = `Hi ${customerName},\n\nPlease use the secure link below to pay ${formatAmountAu(amount)}${orderNumber ? ` for order ${orderNumber}` : ''}:\n\n${payUrl}\n\nThank you,\n${salespersonName || brandCfg.displayName}`
+      try {
+        await sendEmail({ to: customerEmail, subject, text, from: brandCfg.emailFrom || undefined })
+        deliveryStatus = 'Email sent'
+      } catch (error) {
+        deliveryStatus = `Email failed: ${error instanceof Error ? error.message : 'send failed'}`
+      }
+    }
+
+    if (deliveryStatus) {
+      await supabaseAdmin.from('payment_links').update({ delivery_status: deliveryStatus, updated_at: new Date().toISOString() }).eq('id', row.id)
+    }
+
+    return NextResponse.json({ id: row.id, url: payUrl, deliveryStatus })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Could not create payment link.' }, { status: 500 })
   }
 }
 
-// Recent links for the in-tool status list.
+// Recent links for the in-tool status list — the last 10 transactions.
 export async function GET(request: NextRequest) {
   const user = await getRequestUser(request)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -145,7 +118,7 @@ export async function GET(request: NextRequest) {
     .from('payment_links')
     .select('id, created_at, customer_name, order_number, amount, status, delivery_method, delivery_status, amount_paid, paid_at')
     .order('created_at', { ascending: false })
-    .limit(50)
+    .limit(10)
   if (brand) query = query.eq('brand', brand)
 
   const { data, error } = await query

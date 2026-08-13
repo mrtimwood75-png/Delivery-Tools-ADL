@@ -28,6 +28,17 @@ type RecentLink = {
 
 const money = (n: number) => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(Number(n || 0))
 
+const LINK_TTL_MS = 7 * 24 * 60 * 60 * 1000 // stable links self-mint for 7 days, then hard-expire
+
+// Status badge for a recent link. Paid stays paid; an unpaid link past its 7-day
+// window reads as Expired (the link no longer works); otherwise it's Pending.
+function linkBadge(r: RecentLink): { label: string; bg: string; color: string } {
+  if (r.status === 'paid') return { label: 'Paid', bg: '#edf7ed', color: '#1e4620' }
+  const created = new Date(r.created_at).getTime()
+  if (Number.isFinite(created) && Date.now() - created > LINK_TTL_MS) return { label: 'Expired', bg: '#f1efe9', color: '#837a6e' }
+  return { label: 'Pending', bg: '#fff4e5', color: '#8a5a00' }
+}
+
 // Per-brand name for the tab title and page heading, from the host brand.
 function portalNameFor(brand: 'bca' | 'transforma' | null): string {
   return brand === 'transforma' ? 'Transforma Payments Portal'
@@ -243,13 +254,14 @@ export default function PaymentLinkPage() {
                     <div style={{ fontWeight: 600, fontSize: 14 }}>{r.customer_name}{r.order_number ? ` · ${r.order_number}` : ''}</div>
                     <div style={{ fontSize: 12, color: '#8a8a8a' }}>{money(r.amount)} · {r.delivery_method === 'sms' ? 'SMS' : r.delivery_method === 'email' ? 'Email' : 'Link'}</div>
                   </div>
-                  <span style={{
-                    fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 20,
-                    background: r.status === 'paid' ? '#edf7ed' : '#fff4e5',
-                    color: r.status === 'paid' ? '#1e4620' : '#8a5a00'
-                  }}>
-                    {r.status === 'paid' ? 'Paid' : 'Pending'}
-                  </span>
+                  {(() => {
+                    const badge = linkBadge(r)
+                    return (
+                      <span style={{ fontSize: 12, fontWeight: 700, padding: '4px 10px', borderRadius: 20, background: badge.bg, color: badge.color, whiteSpace: 'nowrap' }}>
+                        {badge.label}
+                      </span>
+                    )
+                  })()}
                 </div>
               ))}
             </div>
