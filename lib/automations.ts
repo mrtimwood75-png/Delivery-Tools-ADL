@@ -30,10 +30,11 @@ export type AutomationRow = {
   action_set_ready: string | null
   action_regenerate_link: boolean | null
   action_send_template_id: string | null
+  payment_source: 'any' | 'dashboard' | 'showroom' | string | null
 }
 
 const AUTOMATION_SELECT =
-  'id, is_active, sort_order, trigger_type, trigger_template_id, trigger_keyword, trigger_status, match_mode, action_set_status, action_set_light, action_set_ready, action_regenerate_link, action_send_template_id'
+  'id, is_active, sort_order, trigger_type, trigger_template_id, trigger_keyword, trigger_status, match_mode, action_set_status, action_set_light, action_set_ready, action_regenerate_link, action_send_template_id, payment_source'
 
 // First word of a reply, lowercased and stripped of punctuation.
 function firstWord(content: string): string {
@@ -112,7 +113,11 @@ export async function runTemplateSent(orderId: string, templateId: string | null
 // Run all active automations for a simple order event that carries no template
 // or keyword condition (e.g. the delivery date being set or cleared). Actions
 // are additive, applied in sort order.
-export async function runSimpleTrigger(orderId: string, triggerType: string): Promise<number> {
+//
+// For payment_received, an optional paymentSource ('dashboard' = warehouse-
+// generated link, 'showroom' = payment-app link) lets a rule target one source;
+// rules left on 'any' fire for both.
+export async function runSimpleTrigger(orderId: string, triggerType: string, paymentSource?: 'dashboard' | 'showroom'): Promise<number> {
   if (!orderId || !triggerType) return 0
   const { data } = await supabaseAdmin
     .from('automations')
@@ -120,7 +125,10 @@ export async function runSimpleTrigger(orderId: string, triggerType: string): Pr
     .eq('is_active', true)
     .eq('trigger_type', triggerType)
     .order('sort_order', { ascending: true })
-  const rows = (data || []) as AutomationRow[]
+  let rows = (data || []) as AutomationRow[]
+  if (triggerType === 'payment_received' && paymentSource) {
+    rows = rows.filter((a) => !a.payment_source || a.payment_source === 'any' || a.payment_source === paymentSource)
+  }
   for (const a of rows) await applyAutomationActions(orderId, a)
   return rows.length
 }

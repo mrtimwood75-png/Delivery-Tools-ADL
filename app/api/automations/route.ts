@@ -2,7 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 
 const SELECT =
-  'id, is_active, sort_order, trigger_type, trigger_template_id, trigger_keyword, trigger_status, match_mode, action_set_status, action_set_light, action_set_ready, action_regenerate_link, action_send_template_id'
+  'id, is_active, sort_order, trigger_type, trigger_template_id, trigger_keyword, trigger_status, match_mode, action_set_status, action_set_light, action_set_ready, action_regenerate_link, action_send_template_id, payment_source'
+
+const PAYMENT_SOURCES = new Set(['any', 'dashboard', 'showroom'])
+function paymentSourceOf(v: unknown): string {
+  const s = String(v ?? '').trim()
+  return PAYMENT_SOURCES.has(s) ? s : 'any'
+}
 
 const TRIGGERS = new Set(['template_sent', 'reply_keyword', 'reply_to_template', 'status_set', 'delivery_date_set', 'delivery_date_cleared', 'payment_received'])
 const REPLY_TRIGGERS = new Set(['reply_keyword', 'reply_to_template'])
@@ -75,6 +81,7 @@ export async function POST(request: NextRequest) {
         action_set_ready,
         action_regenerate_link,
         action_send_template_id,
+        payment_source: trigger_type === 'payment_received' ? paymentSourceOf(body.payment_source) : 'any',
         sort_order,
         is_active: true
       })
@@ -119,6 +126,7 @@ export async function PATCH(request: NextRequest) {
     if ('trigger_status' in body) update.trigger_status = orNull(body.trigger_status)
     if ('match_mode' in body) update.match_mode = MATCH_MODES.has(clean(body.match_mode)) ? clean(body.match_mode) : null
     if ('trigger_template_id' in body) update.trigger_template_id = orNull(body.trigger_template_id)
+    if ('payment_source' in body) update.payment_source = paymentSourceOf(body.payment_source)
 
     const { data, error } = await supabaseAdmin.from('automations').update(update).eq('id', id).select(SELECT).single()
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })

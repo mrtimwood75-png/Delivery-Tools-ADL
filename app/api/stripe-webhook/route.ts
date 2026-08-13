@@ -60,7 +60,7 @@ async function confirmAdhocPaymentLink(session: Stripe.Checkout.Session, amountP
         .update({ payment_due: remainingDue, payment_status: remainingDue > 0 ? 'Unpaid' : 'Paid' })
         .eq('id', order.id)
       await supabaseAdmin.from('stripe_payments').update({ order_id: order.id }).eq('session_id', session.id)
-      const fired = await runSimpleTrigger(order.id, 'payment_received')
+      const fired = await runSimpleTrigger(order.id, 'payment_received', 'showroom')
       console.log('[stripe-webhook] adhoc payment applied to order', { orderId: order.id, orderNumber, remainingDue, automationsFired: fired })
       allocatedOrder = orderNumber
     }
@@ -174,7 +174,7 @@ export async function POST(request: NextRequest) {
             .eq('id', order.id)
           await supabaseAdmin.from('stripe_payments').update({ order_id: order.id }).eq('session_id', sessionId)
           // Run any "payment received" automations (e.g. send a receipt SMS).
-          const fired = await runSimpleTrigger(order.id, 'payment_received')
+          const fired = await runSimpleTrigger(order.id, 'payment_received', 'dashboard')
           console.log('[stripe-webhook] payment-received automations', { orderId: order.id, automationsFired: fired })
         }
       }

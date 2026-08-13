@@ -9,9 +9,10 @@ import { ASSIGNABLE_ROLES } from '@/lib/roles'
 type AppUser = { id: string; email: string; full_name: string | null; role: string; is_active: boolean; can_access_dashboard?: boolean; can_access_payments?: boolean }
 type Density = 'compact' | 'normal' | 'spacious'
 
-type Automation = { id: string; is_active: boolean; sort_order: number; trigger_type: string; trigger_template_id: string | null; trigger_keyword: string | null; trigger_status: string | null; match_mode: string | null; action_set_status: string | null; action_set_light: string | null; action_set_ready: string | null; action_regenerate_link: boolean | null; action_send_template_id: string | null }
-type NewAutomation = { trigger_type: string; trigger_template_id: string; trigger_keyword: string; trigger_status: string; match_mode: string; action_set_status: string; action_set_light: string; action_set_ready: string; action_regenerate_link: boolean; action_send_template_id: string }
-const emptyAuto: NewAutomation = { trigger_type: 'reply_to_template', trigger_template_id: '', trigger_keyword: '', trigger_status: '', match_mode: 'keyword', action_set_status: '', action_set_light: '', action_set_ready: '', action_regenerate_link: false, action_send_template_id: '' }
+type Automation = { id: string; is_active: boolean; sort_order: number; trigger_type: string; trigger_template_id: string | null; trigger_keyword: string | null; trigger_status: string | null; match_mode: string | null; action_set_status: string | null; action_set_light: string | null; action_set_ready: string | null; action_regenerate_link: boolean | null; action_send_template_id: string | null; payment_source: string | null }
+type NewAutomation = { trigger_type: string; trigger_template_id: string; trigger_keyword: string; trigger_status: string; match_mode: string; action_set_status: string; action_set_light: string; action_set_ready: string; action_regenerate_link: boolean; action_send_template_id: string; payment_source: string }
+const emptyAuto: NewAutomation = { trigger_type: 'reply_to_template', trigger_template_id: '', trigger_keyword: '', trigger_status: '', match_mode: 'keyword', action_set_status: '', action_set_light: '', action_set_ready: '', action_regenerate_link: false, action_send_template_id: '', payment_source: 'any' }
+const paymentSourceLabel: Record<string, string> = { any: 'any payment', dashboard: 'warehouse (dashboard) links', showroom: 'showroom (payment app) links' }
 const lightLabel: Record<string, string> = { confirmed: '🟢 Confirmed', awaiting: '🟡 Awaiting', rejected: '🔴 Rejected', none: '⚪ Clear' }
 const triggerLabel: Record<string, string> = { template_sent: 'When this template is sent', reply_keyword: 'When a reply keyword matches', reply_to_template: 'When a customer replies to a template', status_set: 'When the status is changed to…', delivery_date_set: 'When a delivery date is set', delivery_date_cleared: 'When a delivery date is cleared', payment_received: 'When a payment is received (Stripe)' }
 const REPLY_TRIGGERS = ['reply_keyword', 'reply_to_template']
@@ -138,7 +139,7 @@ export default function AdminTemplatesPage() {
     if (a.trigger_type === 'status_set') return `When the status is changed to "${a.trigger_status || '—'}"`
     if (a.trigger_type === 'delivery_date_set') return 'When a delivery date is set'
     if (a.trigger_type === 'delivery_date_cleared') return 'When a delivery date is cleared'
-    if (a.trigger_type === 'payment_received') return 'When a payment is received (Stripe)'
+    if (a.trigger_type === 'payment_received') return `When a payment is received from ${paymentSourceLabel[a.payment_source || 'any'] || 'any payment'}`
     if (a.trigger_type === 'reply_to_template') return `When a customer replies to "${templateName(a.trigger_template_id)}" and ${matchLabel[a.match_mode || 'any']}${a.match_mode === 'keyword' && a.trigger_keyword ? ` "${a.trigger_keyword}"` : ''}`
     return `When a reply ${matchLabel[a.match_mode || 'keyword']}${a.trigger_keyword ? ` "${a.trigger_keyword}"` : ''}`
   }
@@ -340,7 +341,7 @@ export default function AdminTemplatesPage() {
 
   function startEditAuto(a: Automation) {
     setEditingAutoId(a.id)
-    setEditAuto({ trigger_type: a.trigger_type, trigger_template_id: a.trigger_template_id || '', trigger_keyword: a.trigger_keyword || '', trigger_status: a.trigger_status || '', match_mode: a.match_mode || 'keyword', action_set_status: a.action_set_status || '', action_set_light: a.action_set_light || '', action_set_ready: a.action_set_ready || '', action_regenerate_link: Boolean(a.action_regenerate_link), action_send_template_id: a.action_send_template_id || '' })
+    setEditAuto({ trigger_type: a.trigger_type, trigger_template_id: a.trigger_template_id || '', trigger_keyword: a.trigger_keyword || '', trigger_status: a.trigger_status || '', match_mode: a.match_mode || 'keyword', action_set_status: a.action_set_status || '', action_set_light: a.action_set_light || '', action_set_ready: a.action_set_ready || '', action_regenerate_link: Boolean(a.action_regenerate_link), action_send_template_id: a.action_send_template_id || '', payment_source: a.payment_source || 'any' })
   }
   function validateAuto(p: NewAutomation): string {
     if ((p.trigger_type === 'template_sent' || p.trigger_type === 'reply_to_template') && !p.trigger_template_id) return 'Pick the template for this trigger.'
@@ -355,6 +356,7 @@ export default function AdminTemplatesPage() {
     if (p.trigger_type === 'template_sent' || p.trigger_type === 'reply_to_template') patch.trigger_template_id = p.trigger_template_id || null
     if (REPLY_TRIGGERS.includes(p.trigger_type)) { patch.trigger_keyword = p.trigger_keyword || null; patch.match_mode = p.match_mode }
     if (p.trigger_type === 'status_set') patch.trigger_status = p.trigger_status || null
+    if (p.trigger_type === 'payment_received') patch.payment_source = p.payment_source || 'any'
     return patch
   }
   async function saveEditAuto(id: string) {
@@ -372,6 +374,7 @@ export default function AdminTemplatesPage() {
       {draft.trigger_type === 'status_set' ? <label style={{ minWidth: 200 }}>When status becomes<select value={draft.trigger_status} onChange={(e) => set({ ...draft, trigger_status: e.target.value })}><option value="">— Choose status —</option>{statusOpts.map((s) => <option key={s} value={s}>{s}</option>)}</select></label> : null}
       {isReply ? <label style={{ minWidth: 170 }}>Reply matches<select value={draft.match_mode} onChange={(e) => set({ ...draft, match_mode: e.target.value })}>{matchOpts.map((m) => <option key={m} value={m}>{matchLabel[m]}</option>)}</select></label> : null}
       {isReply && draft.match_mode === 'keyword' ? <label style={{ minWidth: 140 }}>Keyword<input value={draft.trigger_keyword} onChange={(e) => set({ ...draft, trigger_keyword: e.target.value })} placeholder="e.g. DEBIT" /></label> : null}
+      {draft.trigger_type === 'payment_received' ? <label style={{ minWidth: 230 }}>Payment from<select value={draft.payment_source || 'any'} onChange={(e) => set({ ...draft, payment_source: e.target.value })}><option value="any">Any payment link</option><option value="dashboard">Warehouse (dashboard) links</option><option value="showroom">Showroom (payment app) links</option></select></label> : null}
     </>
   }
   const actionFields = (draft: NewAutomation, set: (d: NewAutomation) => void) => <>
