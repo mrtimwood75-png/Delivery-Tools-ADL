@@ -50,6 +50,7 @@ function allowedOnPaymentStore(pathname: string) {
   return pathname === '/payment-link'
     || pathname === '/messages'
     || pathname === '/admin' || pathname.startsWith('/admin/')
+    || pathname === '/templates'
     || pathname.startsWith('/pay/')
     || pathname === '/login'
     || pathname === '/account'
