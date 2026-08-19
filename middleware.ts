@@ -49,6 +49,7 @@ function isPublicPage(pathname: string) {
 function allowedOnPaymentStore(pathname: string) {
   return pathname === '/payment-link'
     || pathname === '/messages'
+    || pathname === '/order-tools'
     || pathname === '/admin' || pathname.startsWith('/admin/')
     || pathname === '/templates'
     || pathname.startsWith('/pay/')
