@@ -1,5 +1,3 @@
 {
-  "crons": [
-    { "path": "/api/import/transforma", "schedule": "*/20 * * * *" }
-  ]
+  "crons": []
 }

@@ -3,7 +3,9 @@
 import { useState } from 'react'
 
 // Manual trigger for the Transforma Options-API ingest, alongside the BCA
-// packing-list import. Also runs automatically every 20 minutes via cron.
+// packing-list import. This is now the only way orders are pulled — the
+// automatic 20-minute cron has been disabled, so a sync happens only when
+// someone clicks "Sync Transforma now".
 export default function TransformaSync() {
   const [from, setFrom] = useState('')
   const [busy, setBusy] = useState(false)
@@ -36,7 +38,7 @@ export default function TransformaSync() {
     <section className="card grid" style={{ boxShadow: 'none' }}>
       <div>
         <h2 style={{ margin: '0 0 8px' }}>Transforma Sync</h2>
-        <p className="muted" style={{ margin: 0 }}>Pull orders straight from the Transforma Options API. This also runs automatically every 20 minutes. Orders are matched by order number and tagged Transforma; existing orders keep their dashboard status, dates and notes.</p>
+        <p className="muted" style={{ margin: 0 }}>Pull orders straight from the Transforma Options API. This runs only when you click the button below — there is no automatic sync. Orders are matched by order number and tagged Transforma; existing orders keep their dashboard status, dates and notes.</p>
       </div>
       <label>
         From date (optional)
