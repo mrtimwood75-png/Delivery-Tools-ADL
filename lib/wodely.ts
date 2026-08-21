@@ -62,6 +62,19 @@ function buildAddress(c: ReturnType<typeof customerOf>): string {
   return [line.join(', '), tail].filter(Boolean).join(', ')
 }
 
+// Adelaide's UTC offset for a given YYYY-MM-DD (DST-aware: +10:30 ACDT Oct–Apr,
+// +09:30 ACST otherwise). The delivery window must carry this offset — otherwise
+// Wodely reads the naive time as UTC and the 23:59 end rolls into the next day
+// (a 3 Sep booking showed as 4/9).
+function adelaideOffset(ymd: string): string {
+  const dt = new Date(`${ymd}T12:00:00Z`)
+  const name = new Intl.DateTimeFormat('en-US', { timeZone: 'Australia/Adelaide', timeZoneName: 'longOffset' })
+    .formatToParts(dt).find((p) => p.type === 'timeZoneName')?.value || ''
+  const m = name.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/)
+  if (!m) return '+09:30'
+  return `${m[1]}${m[2].padStart(2, '0')}:${(m[3] || '00').padStart(2, '0')}`
+}
+
 type BuiltPayload = { orderId: string; payload: Record<string, unknown> } | { orderId: string; error: string }
 
 function buildPayload(order: OrderRow): BuiltPayload {
@@ -77,8 +90,9 @@ function buildPayload(order: OrderRow): BuiltPayload {
     .map((it) => prune({ productId: clean(it.product_code), productDesc: clean(it.product_name), orderId, quantity: Number(it.quantity || 0), price: 0 }) as unknown as WodelyPackage)
     .filter((p) => clean(p.productId) || clean(p.productDesc))
 
-  const after = deliveryDate ? `${deliveryDate}T00:00:00` : null
-  const before = deliveryDate ? `${deliveryDate}T23:59:00` : null
+  const tz = deliveryDate ? adelaideOffset(deliveryDate) : ''
+  const after = deliveryDate ? `${deliveryDate}T00:00:00${tz}` : null
+  const before = deliveryDate ? `${deliveryDate}T23:59:00${tz}` : null
   const taskDesc = [cfg.displayName, orderId, recipientName].filter(Boolean).join(' - ')
 
   const payload = prune({
