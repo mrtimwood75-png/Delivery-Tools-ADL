@@ -1,7 +1,7 @@
 import Stripe from 'stripe'
 import { stripeForBrand, resolveOrderBrand } from '@/lib/stripe'
 import { getMerchantConfig } from '@/lib/merchant'
-import { paymentBrandForHost } from '@/lib/host'
+import { paymentBrandForHost, hostForBrand } from '@/lib/host'
 import type { Brand } from '@/lib/brand'
 
 // The brand to charge through. On a multi-brand payment deployment (Adelaide:
@@ -40,8 +40,8 @@ export type LinkRow = {
   salesperson_email: string
 }
 
-function baseUrl(origin?: string): string {
-  return (process.env.PUBLIC_BASE_URL || origin || 'https://delivery-tools-bcb-vercel.vercel.app').replace(/\/$/, '')
+function baseUrl(origin?: string, brand?: Brand): string {
+  return (process.env.PUBLIC_BASE_URL || origin || `https://${hostForBrand(brand)}`).replace(/\/$/, '')
 }
 
 // Mint a fresh Stripe Checkout Session for an ad-hoc payment link. Called lazily
@@ -52,7 +52,7 @@ function baseUrl(origin?: string): string {
 export async function createLinkSession(link: LinkRow, origin?: string): Promise<Stripe.Checkout.Session> {
   const brand = await brandForLink(link.order_number || null, origin)
   const stripe = stripeForBrand(brand)
-  const base = baseUrl(origin)
+  const base = baseUrl(origin, brand)
   const amount = Number(link.amount)
 
   return stripe.checkout.sessions.create({

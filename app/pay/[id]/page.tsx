@@ -53,7 +53,7 @@ export default async function PayLinkPage({ params }: Params) {
 
   // Active: mint a fresh session and hand off to Stripe.
   const h = await headers()
-  const origin = process.env.PUBLIC_BASE_URL || `https://${h.get('host') || 'delivery-tools-bcb-vercel.vercel.app'}`
+  const origin = process.env.PUBLIC_BASE_URL || `https://${h.get('host') || 'payments-bca.vercel.app'}`
   const session = await createLinkSession(link, origin)
   await supabaseAdmin
     .from('payment_links')

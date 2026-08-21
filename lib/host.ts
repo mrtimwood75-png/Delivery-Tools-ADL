@@ -23,3 +23,10 @@ export function paymentBrandForHost(host: string | null | undefined): Brand | nu
 export function isPaymentHost(host: string | null | undefined): boolean {
   return paymentBrandForHost(host) !== null
 }
+
+// The customer-facing payment host for a brand. Used as the base for stable
+// /pay links when there's no request origin (e.g. server-side automations), so a
+// link can never fall back to a wrong or unassigned domain. Defaults to BCA.
+export function hostForBrand(brand: Brand | null | undefined): string {
+  return brand === 'transforma' ? TRANSFORMA_HOST : BCA_HOST
+}

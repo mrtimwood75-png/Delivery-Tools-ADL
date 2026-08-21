@@ -1,7 +1,8 @@
 import Stripe from 'stripe'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { stripeForBrand } from '@/lib/stripe'
-import { brandForSource } from '@/lib/brand'
+import { brandForSource, type Brand } from '@/lib/brand'
+import { hostForBrand } from '@/lib/host'
 import { checkoutCustomText } from '@/lib/paymentSession'
 
 // Dashboard order-balance links hard-expire 7 days after they're created (to
@@ -9,8 +10,12 @@ import { checkoutCustomText } from '@/lib/paymentSession'
 // link the whole time; a fresh Stripe session is minted on each visit.
 export const ORDER_LINK_TTL_MS = 7 * 24 * 60 * 60 * 1000
 
-function baseUrl(origin?: string): string {
-  return (process.env.PUBLIC_BASE_URL || origin || 'https://delivery-tools-bcb-vercel.vercel.app').replace(/\/$/, '')
+// Base for the customer-facing stable link. Prefer an explicit env, then the
+// request origin, and finally the brand's real payment host — NEVER a hardcoded
+// wrong domain (a server-side automation with no origin previously produced a
+// dead link this way).
+function baseUrl(origin?: string, brand?: Brand): string {
+  return (process.env.PUBLIC_BASE_URL || origin || `https://${hostForBrand(brand)}`).replace(/\/$/, '')
 }
 
 // Set up (or refresh) an order's stable payment link: store …/pay/order/<id> on
@@ -21,7 +26,7 @@ function baseUrl(origin?: string): string {
 export async function createOrderCheckoutLink(orderId: string, origin?: string): Promise<{ ok: boolean; url?: string; reason?: string }> {
   const { data: order } = await supabaseAdmin
     .from('delivery_orders')
-    .select('id, payment_due')
+    .select('id, payment_due, source')
     .eq('id', orderId)
     .maybeSingle()
   if (!order) return { ok: false, reason: 'order not found' }
@@ -29,7 +34,7 @@ export async function createOrderCheckoutLink(orderId: string, origin?: string):
   const amount = Number(order.payment_due || 0)
   if (amount <= 0) return { ok: false, reason: 'no balance owing' }
 
-  const url = `${baseUrl(origin)}/pay/order/${orderId}`
+  const url = `${baseUrl(origin, brandForSource(order.source))}/pay/order/${orderId}`
   const expiresAt = new Date(Date.now() + ORDER_LINK_TTL_MS).toISOString()
 
   const { error } = await supabaseAdmin
@@ -67,7 +72,7 @@ export async function mintOrderSession(
       },
       quantity: 1
     }],
-    success_url: `${baseUrl(origin)}/pay/success?session_id={CHECKOUT_SESSION_ID}`,
+    success_url: `${baseUrl(origin, brand)}/pay/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: process.env.STRIPE_CANCEL_URL || 'https://boconcept.com.au',
     custom_text: await checkoutCustomText(brand),
     metadata: { kind: 'order_balance', customer_name: order.customerName, order_number: order.order_number, balance_payable: String(amount) }

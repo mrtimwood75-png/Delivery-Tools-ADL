@@ -37,7 +37,7 @@ export default async function PayOrderPage({ params }: { params: Promise<{ id: s
 
   const customer = Array.isArray(order.customers) ? order.customers[0] : order.customers
   const h = await headers()
-  const origin = process.env.PUBLIC_BASE_URL || `https://${h.get('host') || 'delivery-tools-bcb-vercel.vercel.app'}`
+  const origin = process.env.PUBLIC_BASE_URL || `https://${h.get('host') || 'payments-bca.vercel.app'}`
   const session = await mintOrderSession(
     { id: order.id as string, order_number: order.order_number as string, payment_due: due, source: (order.source as string) || null, customerName: (customer as { name?: string })?.name || 'Customer' },
     origin
