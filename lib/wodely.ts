@@ -90,9 +90,10 @@ function buildPayload(order: OrderRow): BuiltPayload {
     .map((it) => prune({ productId: clean(it.product_code), productDesc: clean(it.product_name), orderId, quantity: Number(it.quantity || 0), price: 0 }) as unknown as WodelyPackage)
     .filter((p) => clean(p.productId) || clean(p.productDesc))
 
+  // Default delivery window 08:00–17:00 on the booked day, in the local timezone.
   const tz = deliveryDate ? adelaideOffset(deliveryDate) : ''
-  const after = deliveryDate ? `${deliveryDate}T00:00:00${tz}` : null
-  const before = deliveryDate ? `${deliveryDate}T23:59:00${tz}` : null
+  const after = deliveryDate ? `${deliveryDate}T08:00:00${tz}` : null
+  const before = deliveryDate ? `${deliveryDate}T17:00:00${tz}` : null
   const taskDesc = [cfg.displayName, orderId, recipientName].filter(Boolean).join(' - ')
 
   const payload = prune({
