@@ -97,13 +97,44 @@ export async function GET(request: NextRequest) {
     for (const row of replyRows || []) if (row.customer_id) repliedCustomerIds.add(row.customer_id as string)
   }
 
+  // Last template sent per order: the most recent OUTBOUND SMS that used a
+  // template (free-form messages have no template_id and don't count).
+  const lastTemplateByOrderId: Record<string, string> = {}
+  if (orderIds.length) {
+    const { data: msgRows } = await supabaseAdmin
+      .from('sms_messages')
+      .select('order_id, template_id, created_at')
+      .eq('direction', 'outbound')
+      .not('template_id', 'is', null)
+      .in('order_id', orderIds)
+      .order('created_at', { ascending: false })
+    const latestTplIdByOrder: Record<string, string> = {}
+    for (const row of msgRows || []) {
+      const oid = row.order_id as string | null
+      if (oid && !latestTplIdByOrder[oid]) latestTplIdByOrder[oid] = row.template_id as string
+    }
+    const templateIds = Array.from(new Set(Object.values(latestTplIdByOrder)))
+    if (templateIds.length) {
+      const { data: tplRows } = await supabaseAdmin
+        .from('notification_templates')
+        .select('id, name')
+        .in('id', templateIds)
+      const nameById: Record<string, string> = {}
+      for (const t of tplRows || []) nameById[t.id as string] = (t.name as string) || ''
+      for (const [oid, tid] of Object.entries(latestTplIdByOrder)) {
+        if (nameById[tid]) lastTemplateByOrderId[oid] = nameById[tid]
+      }
+    }
+  }
+
   const orders = (orderRows || []).map((order) => ({
     ...order,
     ready_status: order.ready_status || 'Not Ready',
     payment_status: Number(order.payment_due || 0) > 0 ? 'Unpaid' : 'Paid',
     customers: customersById[order.customer_id] || null,
     items: itemsByOrderId[order.id] || [],
-    has_reply: repliedCustomerIds.has(order.customer_id)
+    has_reply: repliedCustomerIds.has(order.customer_id),
+    last_template: lastTemplateByOrderId[order.id] || null
   }))
 
   return NextResponse.json({ orders }, { headers: { 'Cache-Control': 'no-store' } })

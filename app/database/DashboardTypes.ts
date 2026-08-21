@@ -41,6 +41,7 @@ export type Order = {
   source?: string | null
   delivery_confirmation?: string | null
   has_reply?: boolean
+  last_template?: string | null
   imported_at?: string
   import_date?: string
   customers: Customer | Customer[] | null
