@@ -161,14 +161,16 @@ export default function DashboardNative() {
   // first). salesByBrand.all is the unscoped fallback.
   const salesByBrand = useMemo(() => {
     const build = (brand: string | null) => {
-      const byPerson: Record<string, string[]> = {}
+      const byKey: Record<string, string[]> = {}
       for (const [code, name] of Object.entries(salesNames)) {
         const n = String(name || '').trim(); if (!n) continue
         const b = salesBrands[code] || null
         if (brand && b && b !== brand) continue
-        ;(byPerson[n] ||= []).push(code)
+        // Group case-insensitively so "Lola Bezor" and "lola Bezor" are one person.
+        const key = n.toLowerCase().replace(/\s+/g, ' ')
+        ;(byKey[key] ||= []).push(code)
       }
-      const opts = Object.entries(byPerson).map(([name, codes]) => ({ name, code: codes.slice().sort()[0], codes })).sort((a, b) => a.name.localeCompare(b.name))
+      const opts = Object.values(byKey).map((codes) => { const code = codes.slice().sort()[0]; return { name: salesNames[code] || '', code, codes } }).sort((a, b) => a.name.localeCompare(b.name))
       const canon: Record<string, string> = {}
       for (const p of opts) for (const c of p.codes) canon[c] = p.code
       return { opts, canon }
