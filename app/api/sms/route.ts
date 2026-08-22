@@ -5,6 +5,7 @@ import { buildMessage, sendMessageMediaSms, SMS_ORDER_SELECT, type OrderRow } fr
 import { brandForSource } from '@/lib/brand'
 import { getAllMerchantConfigs } from '@/lib/merchant'
 import { runTemplateSent } from '@/lib/automations'
+import { createOrderCheckoutLink } from '@/lib/stripeLinks'
 
 function templateAudienceMatches(balance: number, audience: string) {
   const hasBalance = Number(balance || 0) > 0
@@ -83,10 +84,19 @@ export async function POST(request: NextRequest) {
       if (!mobile) { skippedNoMobile += 1; continue }
       if (!resend && priorSms.startsWith('Sent')) { skippedSent += 1; continue }
 
-      if (!single && amount > 0 && !link && templateText.includes('{stripe_checkout_url}')) {
-        await supabaseAdmin.from('delivery_orders').update({ sms_status: 'Failed (Missing Stripe link)' }).eq('id', order.id)
-        failed += 1
-        continue
+      // Template needs a payment link and there's a balance but no link yet —
+      // mint the stable /pay/order/<id> link on the fly rather than failing, so
+      // staff don't have to click "Stripe Links" first. Only give up (and mark
+      // the row failed) if minting itself fails.
+      if (amount > 0 && !link && templateText.includes('{stripe_checkout_url}')) {
+        const gen = await createOrderCheckoutLink(order.id)
+        if (gen.ok && gen.url) {
+          order.stripe_link = gen.url
+        } else {
+          await supabaseAdmin.from('delivery_orders').update({ sms_status: `Failed (Could not create Stripe link${gen.reason ? `: ${gen.reason}` : ''})` }).eq('id', order.id)
+          failed += 1
+          continue
+        }
       }
 
       const message = buildMessage(order, templateText, merchants[brandForSource(order.source)])
