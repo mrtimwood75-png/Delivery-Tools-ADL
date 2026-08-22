@@ -30,11 +30,12 @@ export type AutomationRow = {
   action_set_ready: string | null
   action_regenerate_link: boolean | null
   action_send_template_id: string | null
+  action_send_template_ids: string[] | null
   payment_source: 'any' | 'dashboard' | 'showroom' | string | null
 }
 
 const AUTOMATION_SELECT =
-  'id, is_active, sort_order, trigger_type, trigger_template_id, trigger_keyword, trigger_status, match_mode, action_set_status, action_set_light, action_set_ready, action_regenerate_link, action_send_template_id, payment_source'
+  'id, is_active, sort_order, trigger_type, trigger_template_id, trigger_keyword, trigger_status, match_mode, action_set_status, action_set_light, action_set_ready, action_regenerate_link, action_send_template_id, action_send_template_ids, payment_source'
 
 // First word of a reply, lowercased and stripped of punctuation.
 function firstWord(content: string): string {
@@ -84,13 +85,21 @@ export async function applyAutomationActions(orderId: string, a: AutomationRow):
   if (a.action_regenerate_link) {
     try { await createOrderCheckoutLink(orderId) } catch (e) { console.error('[automation] regenerate link failed', orderId, e) }
   }
-  if (a.action_send_template_id) {
-    const { data: tpl } = await supabaseAdmin
+  // Send one or more templates, in the order they were configured. Prefer the
+  // multi-template list; fall back to the legacy single-template column.
+  const sendIds = (Array.isArray(a.action_send_template_ids) && a.action_send_template_ids.length)
+    ? a.action_send_template_ids.filter(Boolean)
+    : (a.action_send_template_id ? [a.action_send_template_id] : [])
+  if (sendIds.length) {
+    const { data: tpls } = await supabaseAdmin
       .from('notification_templates')
       .select('id, template_text')
-      .eq('id', a.action_send_template_id)
-      .maybeSingle()
-    if (tpl) await sendOrderTemplate(orderId, tpl as { id: string; template_text: string }, `automation:${a.id}`)
+      .in('id', sendIds)
+    const byId = new Map((tpls || []).map((t) => [t.id as string, t as { id: string; template_text: string }]))
+    for (const tid of sendIds) {
+      const tpl = byId.get(tid)
+      if (tpl) await sendOrderTemplate(orderId, tpl, `automation:${a.id}`)
+    }
   }
 }
 

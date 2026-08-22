@@ -2,7 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 
 const SELECT =
-  'id, is_active, sort_order, trigger_type, trigger_template_id, trigger_keyword, trigger_status, match_mode, action_set_status, action_set_light, action_set_ready, action_regenerate_link, action_send_template_id, payment_source'
+  'id, is_active, sort_order, trigger_type, trigger_template_id, trigger_keyword, trigger_status, match_mode, action_set_status, action_set_light, action_set_ready, action_regenerate_link, action_send_template_id, action_send_template_ids, payment_source'
+
+// A list of template ids for the "send template(s)" action. Accepts the new
+// array, or the legacy single id, and always returns a de-duped string[].
+function sendTemplateIds(body: { action_send_template_ids?: unknown; action_send_template_id?: unknown }): string[] {
+  const raw = Array.isArray(body.action_send_template_ids)
+    ? body.action_send_template_ids
+    : (body.action_send_template_id ? [body.action_send_template_id] : [])
+  const ids = raw.map((v) => String(v ?? '').trim()).filter(Boolean)
+  return Array.from(new Set(ids))
+}
 
 const PAYMENT_SOURCES = new Set(['any', 'dashboard', 'showroom'])
 function paymentSourceOf(v: unknown): string {
@@ -58,9 +68,10 @@ export async function POST(request: NextRequest) {
     const action_set_light = LIGHTS.has(clean(body.action_set_light)) ? clean(body.action_set_light) : null
     const action_set_ready = READY.has(clean(body.action_set_ready)) ? clean(body.action_set_ready) : null
     const action_regenerate_link = Boolean(body.action_regenerate_link)
-    const action_send_template_id = orNull(body.action_send_template_id)
+    const action_send_template_ids = sendTemplateIds(body)
+    const action_send_template_id = action_send_template_ids[0] || null
 
-    if (!action_set_status && !action_set_light && !action_set_ready && !action_regenerate_link && !action_send_template_id) {
+    if (!action_set_status && !action_set_light && !action_set_ready && !action_regenerate_link && action_send_template_ids.length === 0) {
       return NextResponse.json({ error: 'Pick at least one action.' }, { status: 400 })
     }
 
@@ -81,6 +92,7 @@ export async function POST(request: NextRequest) {
         action_set_ready,
         action_regenerate_link,
         action_send_template_id,
+        action_send_template_ids,
         payment_source: trigger_type === 'payment_received' ? paymentSourceOf(body.payment_source) : 'any',
         sort_order,
         is_active: true
@@ -121,7 +133,11 @@ export async function PATCH(request: NextRequest) {
     if ('action_set_light' in body) update.action_set_light = LIGHTS.has(clean(body.action_set_light)) ? clean(body.action_set_light) : null
     if ('action_set_ready' in body) update.action_set_ready = READY.has(clean(body.action_set_ready)) ? clean(body.action_set_ready) : null
     if ('action_regenerate_link' in body) update.action_regenerate_link = Boolean(body.action_regenerate_link)
-    if ('action_send_template_id' in body) update.action_send_template_id = orNull(body.action_send_template_id)
+    if ('action_send_template_ids' in body || 'action_send_template_id' in body) {
+      const ids = sendTemplateIds(body)
+      update.action_send_template_ids = ids
+      update.action_send_template_id = ids[0] || null
+    }
     if ('trigger_keyword' in body) update.trigger_keyword = orNull(body.trigger_keyword)
     if ('trigger_status' in body) update.trigger_status = orNull(body.trigger_status)
     if ('match_mode' in body) update.match_mode = MATCH_MODES.has(clean(body.match_mode)) ? clean(body.match_mode) : null
