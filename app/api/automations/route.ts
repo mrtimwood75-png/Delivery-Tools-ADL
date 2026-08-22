@@ -2,16 +2,19 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 
 const SELECT =
-  'id, is_active, sort_order, trigger_type, trigger_template_id, trigger_keyword, trigger_status, match_mode, action_set_status, action_set_light, action_set_ready, action_regenerate_link, action_send_template_id, action_send_template_ids, payment_source'
+  'id, is_active, sort_order, trigger_type, trigger_template_id, trigger_template_ids, trigger_keyword, trigger_status, match_mode, action_set_status, action_set_light, action_set_ready, action_regenerate_link, action_send_template_id, action_send_template_ids, payment_source'
 
-// A list of template ids for the "send template(s)" action. Accepts the new
-// array, or the legacy single id, and always returns a de-duped string[].
+function idList(arr: unknown, single: unknown): string[] {
+  const raw = Array.isArray(arr) ? arr : (single ? [single] : [])
+  return Array.from(new Set(raw.map((v) => String(v ?? '').trim()).filter(Boolean)))
+}
+// Template id(s) for the "send template(s)" action — new array or legacy single.
 function sendTemplateIds(body: { action_send_template_ids?: unknown; action_send_template_id?: unknown }): string[] {
-  const raw = Array.isArray(body.action_send_template_ids)
-    ? body.action_send_template_ids
-    : (body.action_send_template_id ? [body.action_send_template_id] : [])
-  const ids = raw.map((v) => String(v ?? '').trim()).filter(Boolean)
-  return Array.from(new Set(ids))
+  return idList(body.action_send_template_ids, body.action_send_template_id)
+}
+// Template id(s) a rule triggers on — new array or legacy single.
+function triggerTemplateIds(body: { trigger_template_ids?: unknown; trigger_template_id?: unknown }): string[] {
+  return idList(body.trigger_template_ids, body.trigger_template_id)
 }
 
 const PAYMENT_SOURCES = new Set(['any', 'dashboard', 'showroom'])
@@ -49,13 +52,14 @@ export async function POST(request: NextRequest) {
     const trigger_type = clean(body.trigger_type)
     if (!TRIGGERS.has(trigger_type)) return NextResponse.json({ error: 'Choose a valid trigger.' }, { status: 400 })
 
-    const trigger_template_id = orNull(body.trigger_template_id)
+    const trigger_template_ids = triggerTemplateIds(body)
+    const trigger_template_id = trigger_template_ids[0] || null
     const trigger_keyword = orNull(body.trigger_keyword)
     const trigger_status = orNull(body.trigger_status)
     const match_mode = MATCH_MODES.has(clean(body.match_mode)) ? clean(body.match_mode) : null
 
-    if ((trigger_type === 'template_sent' || trigger_type === 'reply_to_template') && !trigger_template_id) {
-      return NextResponse.json({ error: 'Pick the template for this trigger.' }, { status: 400 })
+    if ((trigger_type === 'template_sent' || trigger_type === 'reply_to_template') && trigger_template_ids.length === 0) {
+      return NextResponse.json({ error: 'Pick at least one template for this trigger.' }, { status: 400 })
     }
     if (trigger_type === 'reply_keyword' && !trigger_keyword) {
       return NextResponse.json({ error: 'Enter the keyword for this trigger.' }, { status: 400 })
@@ -84,6 +88,7 @@ export async function POST(request: NextRequest) {
       .insert({
         trigger_type,
         trigger_template_id: (trigger_type === 'template_sent' || trigger_type === 'reply_to_template') ? trigger_template_id : null,
+        trigger_template_ids: (trigger_type === 'template_sent' || trigger_type === 'reply_to_template') ? trigger_template_ids : [],
         trigger_keyword: REPLY_TRIGGERS.has(trigger_type) ? trigger_keyword : null,
         trigger_status: trigger_type === 'status_set' ? trigger_status : null,
         match_mode: REPLY_TRIGGERS.has(trigger_type) ? (match_mode || (trigger_keyword ? 'keyword' : 'any')) : null,
@@ -141,7 +146,11 @@ export async function PATCH(request: NextRequest) {
     if ('trigger_keyword' in body) update.trigger_keyword = orNull(body.trigger_keyword)
     if ('trigger_status' in body) update.trigger_status = orNull(body.trigger_status)
     if ('match_mode' in body) update.match_mode = MATCH_MODES.has(clean(body.match_mode)) ? clean(body.match_mode) : null
-    if ('trigger_template_id' in body) update.trigger_template_id = orNull(body.trigger_template_id)
+    if ('trigger_template_ids' in body || 'trigger_template_id' in body) {
+      const ids = triggerTemplateIds(body)
+      update.trigger_template_ids = ids
+      update.trigger_template_id = ids[0] || null
+    }
     if ('payment_source' in body) update.payment_source = paymentSourceOf(body.payment_source)
 
     const { data, error } = await supabaseAdmin.from('automations').update(update).eq('id', id).select(SELECT).single()

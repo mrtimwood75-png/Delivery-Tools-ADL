@@ -9,9 +9,9 @@ import { ASSIGNABLE_ROLES } from '@/lib/roles'
 type AppUser = { id: string; email: string; full_name: string | null; role: string; is_active: boolean; can_access_dashboard?: boolean; can_access_payments?: boolean }
 type Density = 'compact' | 'normal' | 'spacious'
 
-type Automation = { id: string; is_active: boolean; sort_order: number; trigger_type: string; trigger_template_id: string | null; trigger_keyword: string | null; trigger_status: string | null; match_mode: string | null; action_set_status: string | null; action_set_light: string | null; action_set_ready: string | null; action_regenerate_link: boolean | null; action_send_template_id: string | null; action_send_template_ids: string[] | null; payment_source: string | null }
-type NewAutomation = { trigger_type: string; trigger_template_id: string; trigger_keyword: string; trigger_status: string; match_mode: string; action_set_status: string; action_set_light: string; action_set_ready: string; action_regenerate_link: boolean; action_send_template_ids: string[]; payment_source: string }
-const emptyAuto: NewAutomation = { trigger_type: 'reply_to_template', trigger_template_id: '', trigger_keyword: '', trigger_status: '', match_mode: 'keyword', action_set_status: '', action_set_light: '', action_set_ready: '', action_regenerate_link: false, action_send_template_ids: [], payment_source: 'any' }
+type Automation = { id: string; is_active: boolean; sort_order: number; trigger_type: string; trigger_template_id: string | null; trigger_template_ids: string[] | null; trigger_keyword: string | null; trigger_status: string | null; match_mode: string | null; action_set_status: string | null; action_set_light: string | null; action_set_ready: string | null; action_regenerate_link: boolean | null; action_send_template_id: string | null; action_send_template_ids: string[] | null; payment_source: string | null }
+type NewAutomation = { trigger_type: string; trigger_template_ids: string[]; trigger_keyword: string; trigger_status: string; match_mode: string; action_set_status: string; action_set_light: string; action_set_ready: string; action_regenerate_link: boolean; action_send_template_ids: string[]; payment_source: string }
+const emptyAuto: NewAutomation = { trigger_type: 'reply_to_template', trigger_template_ids: [], trigger_keyword: '', trigger_status: '', match_mode: 'keyword', action_set_status: '', action_set_light: '', action_set_ready: '', action_regenerate_link: false, action_send_template_ids: [], payment_source: 'any' }
 const paymentSourceLabel: Record<string, string> = { any: 'any payment', dashboard: 'warehouse (dashboard) links', showroom: 'showroom (payment app) links' }
 const lightLabel: Record<string, string> = { confirmed: '🟢 Confirmed', awaiting: '🟡 Awaiting', rejected: '🔴 Rejected', none: '⚪ Clear' }
 const triggerLabel: Record<string, string> = { template_sent: 'When this template is sent', reply_keyword: 'When a reply keyword matches', reply_to_template: 'When a customer replies to a template', status_set: 'When the status is changed to…', delivery_date_set: 'When a delivery date is set', delivery_date_cleared: 'When a delivery date is cleared', payment_received: 'When a payment is received (Stripe)' }
@@ -183,7 +183,7 @@ export default function AdminTemplatesPage() {
 
   async function addAutomation() {
     const payload = { ...newAuto }
-    if ((payload.trigger_type === 'template_sent' || payload.trigger_type === 'reply_to_template') && !payload.trigger_template_id) return setStatus('Pick the template for this trigger.')
+    if ((payload.trigger_type === 'template_sent' || payload.trigger_type === 'reply_to_template') && !payload.trigger_template_ids.length) return setStatus('Pick at least one template for this trigger.')
     if (payload.trigger_type === 'reply_keyword' && !payload.trigger_keyword.trim()) return setStatus('Enter the keyword for this trigger.')
     if (payload.trigger_type === 'status_set' && !payload.trigger_status.trim()) return setStatus('Pick the status that triggers this rule.')
     if (REPLY_TRIGGERS.includes(payload.trigger_type) && payload.match_mode === 'keyword' && !payload.trigger_keyword.trim()) return setStatus('Enter the keyword to match, or change the match type.')
@@ -216,13 +216,14 @@ export default function AdminTemplatesPage() {
   }
 
   function templateName(id: string | null) { return templateList.find((t) => t.id === id)?.name || (id ? '(unknown template)' : '') }
+  function triggerTemplateNames(a: Automation) { const ids = (a.trigger_template_ids && a.trigger_template_ids.length) ? a.trigger_template_ids : (a.trigger_template_id ? [a.trigger_template_id] : []); return ids.length ? ids.map((id) => `"${templateName(id)}"`).join(' / ') : '"—"' }
   function automationWhen(a: Automation) {
-    if (a.trigger_type === 'template_sent') return `When "${templateName(a.trigger_template_id)}" is sent`
+    if (a.trigger_type === 'template_sent') return `When ${triggerTemplateNames(a)} is sent`
     if (a.trigger_type === 'status_set') return `When the status is changed to "${a.trigger_status || '—'}"`
     if (a.trigger_type === 'delivery_date_set') return 'When a delivery date is set'
     if (a.trigger_type === 'delivery_date_cleared') return 'When a delivery date is cleared'
     if (a.trigger_type === 'payment_received') return `When a payment is received from ${paymentSourceLabel[a.payment_source || 'any'] || 'any payment'}`
-    if (a.trigger_type === 'reply_to_template') return `When a customer replies to "${templateName(a.trigger_template_id)}" and ${matchLabel[a.match_mode || 'any']}${a.match_mode === 'keyword' && a.trigger_keyword ? ` "${a.trigger_keyword}"` : ''}`
+    if (a.trigger_type === 'reply_to_template') return `When a customer replies to ${triggerTemplateNames(a)} and ${matchLabel[a.match_mode || 'any']}${a.match_mode === 'keyword' && a.trigger_keyword ? ` "${a.trigger_keyword}"` : ''}`
     return `When a reply ${matchLabel[a.match_mode || 'keyword']}${a.trigger_keyword ? ` "${a.trigger_keyword}"` : ''}`
   }
   function automationThen(a: Automation) {
@@ -424,10 +425,10 @@ export default function AdminTemplatesPage() {
 
   function startEditAuto(a: Automation) {
     setEditingAutoId(a.id)
-    setEditAuto({ trigger_type: a.trigger_type, trigger_template_id: a.trigger_template_id || '', trigger_keyword: a.trigger_keyword || '', trigger_status: a.trigger_status || '', match_mode: a.match_mode || 'keyword', action_set_status: a.action_set_status || '', action_set_light: a.action_set_light || '', action_set_ready: a.action_set_ready || '', action_regenerate_link: Boolean(a.action_regenerate_link), action_send_template_ids: (a.action_send_template_ids && a.action_send_template_ids.length) ? a.action_send_template_ids : (a.action_send_template_id ? [a.action_send_template_id] : []), payment_source: a.payment_source || 'any' })
+    setEditAuto({ trigger_type: a.trigger_type, trigger_template_ids: (a.trigger_template_ids && a.trigger_template_ids.length) ? a.trigger_template_ids : (a.trigger_template_id ? [a.trigger_template_id] : []), trigger_keyword: a.trigger_keyword || '', trigger_status: a.trigger_status || '', match_mode: a.match_mode || 'keyword', action_set_status: a.action_set_status || '', action_set_light: a.action_set_light || '', action_set_ready: a.action_set_ready || '', action_regenerate_link: Boolean(a.action_regenerate_link), action_send_template_ids: (a.action_send_template_ids && a.action_send_template_ids.length) ? a.action_send_template_ids : (a.action_send_template_id ? [a.action_send_template_id] : []), payment_source: a.payment_source || 'any' })
   }
   function validateAuto(p: NewAutomation): string {
-    if ((p.trigger_type === 'template_sent' || p.trigger_type === 'reply_to_template') && !p.trigger_template_id) return 'Pick the template for this trigger.'
+    if ((p.trigger_type === 'template_sent' || p.trigger_type === 'reply_to_template') && !p.trigger_template_ids.length) return 'Pick at least one template for this trigger.'
     if (p.trigger_type === 'reply_keyword' && !p.trigger_keyword.trim()) return 'Enter the keyword for this trigger.'
     if (p.trigger_type === 'status_set' && !p.trigger_status.trim()) return 'Pick the status that triggers this rule.'
     if (REPLY_TRIGGERS.includes(p.trigger_type) && p.match_mode === 'keyword' && !p.trigger_keyword.trim()) return 'Enter the keyword to match, or change the match type.'
@@ -436,7 +437,7 @@ export default function AdminTemplatesPage() {
   }
   function autoPatch(p: NewAutomation): Record<string, unknown> {
     const patch: Record<string, unknown> = { action_set_status: p.action_set_status || null, action_set_light: p.action_set_light || null, action_set_ready: p.action_set_ready || null, action_regenerate_link: p.action_regenerate_link, action_send_template_ids: p.action_send_template_ids }
-    if (p.trigger_type === 'template_sent' || p.trigger_type === 'reply_to_template') patch.trigger_template_id = p.trigger_template_id || null
+    if (p.trigger_type === 'template_sent' || p.trigger_type === 'reply_to_template') patch.trigger_template_ids = p.trigger_template_ids
     if (REPLY_TRIGGERS.includes(p.trigger_type)) { patch.trigger_keyword = p.trigger_keyword || null; patch.match_mode = p.match_mode }
     if (p.trigger_type === 'status_set') patch.trigger_status = p.trigger_status || null
     if (p.trigger_type === 'payment_received') patch.payment_source = p.payment_source || 'any'
@@ -453,7 +454,7 @@ export default function AdminTemplatesPage() {
     const isReply = REPLY_TRIGGERS.includes(draft.trigger_type)
     const matchOpts = draft.trigger_type === 'reply_keyword' ? ['keyword', 'any'] : ['keyword', 'affirmative', 'negative', 'any']
     return <>
-      {(draft.trigger_type === 'template_sent' || draft.trigger_type === 'reply_to_template') ? <label style={{ minWidth: 200 }}>Template<select value={draft.trigger_template_id} onChange={(e) => set({ ...draft, trigger_template_id: e.target.value })}><option value="">— Choose template —</option>{templateList.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label> : null}
+      {(draft.trigger_type === 'template_sent' || draft.trigger_type === 'reply_to_template') ? <label style={{ minWidth: 220 }}>Template(s)<div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginTop: 4 }}>{draft.trigger_template_ids.map((id) => <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--accent-soft)', borderRadius: 999, padding: '3px 6px 3px 11px', fontSize: 12.5, fontWeight: 600 }}>{templateList.find((t) => t.id === id)?.name || id}<button type="button" aria-label="Remove template" onClick={() => set({ ...draft, trigger_template_ids: draft.trigger_template_ids.filter((x) => x !== id) })} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 15, lineHeight: 1, padding: 0, color: 'inherit' }}>×</button></span>)}<select value="" onChange={(e) => { const v = e.target.value; if (v && !draft.trigger_template_ids.includes(v)) set({ ...draft, trigger_template_ids: [...draft.trigger_template_ids, v] }) }}><option value="">{draft.trigger_template_ids.length ? '+ Add another…' : '— Choose template —'}</option>{templateList.filter((t) => !draft.trigger_template_ids.includes(t.id)).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></div></label> : null}
       {draft.trigger_type === 'status_set' ? <label style={{ minWidth: 200 }}>When status becomes<select value={draft.trigger_status} onChange={(e) => set({ ...draft, trigger_status: e.target.value })}><option value="">— Choose status —</option>{statusOpts.map((s) => <option key={s} value={s}>{s}</option>)}</select></label> : null}
       {isReply ? <label style={{ minWidth: 170 }}>Reply matches<select value={draft.match_mode} onChange={(e) => set({ ...draft, match_mode: e.target.value })}>{matchOpts.map((m) => <option key={m} value={m}>{matchLabel[m]}</option>)}</select></label> : null}
       {isReply && draft.match_mode === 'keyword' ? <label style={{ minWidth: 140 }}>Keyword<input value={draft.trigger_keyword} onChange={(e) => set({ ...draft, trigger_keyword: e.target.value })} placeholder="e.g. DEBIT" /></label> : null}

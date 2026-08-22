@@ -22,6 +22,7 @@ export type AutomationRow = {
   sort_order: number
   trigger_type: 'template_sent' | 'reply_keyword' | 'reply_to_template' | 'status_set' | 'delivery_date_set' | 'delivery_date_cleared' | string
   trigger_template_id: string | null
+  trigger_template_ids: string[] | null
   trigger_keyword: string | null
   trigger_status: string | null
   match_mode: string | null
@@ -35,7 +36,15 @@ export type AutomationRow = {
 }
 
 const AUTOMATION_SELECT =
-  'id, is_active, sort_order, trigger_type, trigger_template_id, trigger_keyword, trigger_status, match_mode, action_set_status, action_set_light, action_set_ready, action_regenerate_link, action_send_template_id, action_send_template_ids, payment_source'
+  'id, is_active, sort_order, trigger_type, trigger_template_id, trigger_template_ids, trigger_keyword, trigger_status, match_mode, action_set_status, action_set_light, action_set_ready, action_regenerate_link, action_send_template_id, action_send_template_ids, payment_source'
+
+// The template id(s) a rule triggers on — the new multi list, or the legacy
+// single id.
+function triggerTemplateIds(a: AutomationRow): string[] {
+  return (Array.isArray(a.trigger_template_ids) && a.trigger_template_ids.length)
+    ? a.trigger_template_ids.filter(Boolean)
+    : (a.trigger_template_id ? [a.trigger_template_id] : [])
+}
 
 // First word of a reply, lowercased and stripped of punctuation.
 function firstWord(content: string): string {
@@ -112,9 +121,8 @@ export async function runTemplateSent(orderId: string, templateId: string | null
     .select(AUTOMATION_SELECT)
     .eq('is_active', true)
     .eq('trigger_type', 'template_sent')
-    .eq('trigger_template_id', templateId)
     .order('sort_order', { ascending: true })
-  const rows = (data || []) as AutomationRow[]
+  const rows = ((data || []) as AutomationRow[]).filter((a) => triggerTemplateIds(a).includes(templateId))
   for (const a of rows) await applyAutomationActions(orderId, a)
   return rows.length
 }
@@ -179,7 +187,7 @@ export async function runReplyAutomations(
 
   for (const a of rows) {
     if (a.trigger_type === 'reply_to_template') {
-      if (!repliedTemplateId || a.trigger_template_id !== repliedTemplateId) continue
+      if (!repliedTemplateId || !triggerTemplateIds(a).includes(repliedTemplateId)) continue
       if (!replyMatches(a, content)) continue
     } else {
       // reply_keyword — global
