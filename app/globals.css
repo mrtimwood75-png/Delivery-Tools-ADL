@@ -130,6 +130,14 @@ input[type='date'] {
   box-sizing: border-box;
 }
 
+/* Per-column filter inputs (the row under the headers): keep them compact so a
+   short column like State/Postcode isn't ballooned by the input's default width. */
+#deliv-table thead tr:nth-child(2) input {
+  width: 104px;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
 textarea {
   min-height: 96px;
 }
