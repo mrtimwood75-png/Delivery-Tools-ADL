@@ -140,13 +140,14 @@ input[type='date'] {
 }
 
 /* Cap the wide free-text columns (Customer = col 4, Address = col 12) and let
-   long values wrap to a second line instead of stretching the column. */
-#deliv-table tbody tr.data-row td:nth-child(4) {
+   long values wrap to a second line instead of stretching the column. Editing
+   rows are exempt so the inline edit fields have room and don't collide. */
+#deliv-table tbody tr.data-row:not(.editing-row) td:nth-child(4) {
   max-width: 150px;
   white-space: normal;
   overflow-wrap: break-word;
 }
-#deliv-table tbody tr.data-row td:nth-child(12) {
+#deliv-table tbody tr.data-row:not(.editing-row) td:nth-child(12) {
   max-width: 210px;
   white-space: normal;
   overflow-wrap: break-word;
