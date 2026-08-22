@@ -110,6 +110,17 @@ export async function applyAutomationActions(orderId: string, a: AutomationRow):
       if (tpl) await sendOrderTemplate(orderId, tpl, `automation:${a.id}`)
     }
   }
+  // Record what fired, for the admin activity log. Never let logging break the
+  // automation itself.
+  try {
+    const parts: string[] = []
+    if (a.action_set_status) parts.push(`status → ${a.action_set_status}`)
+    if (a.action_set_light) parts.push(`light → ${a.action_set_light}`)
+    if (a.action_set_ready) parts.push(`prep → ${a.action_set_ready}`)
+    if (a.action_regenerate_link) parts.push('regenerated Stripe link')
+    if (sendIds.length) parts.push(`sent ${sendIds.length} template${sendIds.length === 1 ? '' : 's'}`)
+    await supabaseAdmin.from('automation_runs').insert({ automation_id: a.id, order_id: orderId, trigger_type: a.trigger_type, summary: parts.join(', ') || '(no actions)' })
+  } catch (e) { console.error('[automation] run-log failed', orderId, e) }
 }
 
 // Run all active "template sent" automations for a template against an order

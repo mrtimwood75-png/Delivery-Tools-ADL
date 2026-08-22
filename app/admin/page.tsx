@@ -53,6 +53,7 @@ export default function AdminTemplatesPage() {
   const [testEmailTo, setTestEmailTo] = useState('')
   const [templateList, setTemplateList] = useState<{ id: string; name: string }[]>([])
   const [automations, setAutomations] = useState<Automation[]>([])
+  const [automationRuns, setAutomationRuns] = useState<{ id: string; order_number: string; trigger_type: string; summary: string; created_at: string }[]>([])
   const [newAuto, setNewAuto] = useState<NewAutomation>(emptyAuto)
   const [editingAutoId, setEditingAutoId] = useState<string | null>(null)
   const [editAuto, setEditAuto] = useState<NewAutomation>(emptyAuto)
@@ -78,6 +79,7 @@ export default function AdminTemplatesPage() {
     loadMerchant()
     loadDeliveryEmail()
     loadAutomations()
+    loadAutomationRuns()
     loadTemplateList()
     loadPaymentTemplates()
     loadAttachments()
@@ -179,6 +181,9 @@ export default function AdminTemplatesPage() {
     const response = await fetch('/api/automations', { cache: 'no-store' })
     const result = await response.json()
     if (response.ok) setAutomations(result.automations || [])
+  }
+  async function loadAutomationRuns() {
+    try { const r = await fetch('/api/automation-runs', { cache: 'no-store' }); const j = await r.json(); if (r.ok) setAutomationRuns(j.runs || []) } catch { /* ignore */ }
   }
 
   async function addAutomation() {
@@ -640,6 +645,20 @@ export default function AdminTemplatesPage() {
                 </div>
               )
             )) : <p className="muted" style={{ margin: 0 }}>No automations yet. Build one above.</p>}
+          </div>
+          <div style={{ marginTop: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+              <h3 style={{ margin: 0, fontSize: 15 }}>Recent automation activity</h3>
+              <button type="button" className="btn-secondary" onClick={loadAutomationRuns}>Refresh</button>
+            </div>
+            {automationRuns.length ? <div style={{ display: 'grid', gap: 2, maxHeight: 320, overflowY: 'auto' }}>{automationRuns.map((r) => (
+              <div key={r.id} style={{ display: 'flex', gap: 10, alignItems: 'baseline', fontSize: 12.5, padding: '5px 8px', borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
+                <span className="muted" style={{ whiteSpace: 'nowrap' }}>{new Date(r.created_at).toLocaleString('en-AU')}</span>
+                <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{r.order_number || '—'}</span>
+                <span className="muted" style={{ whiteSpace: 'nowrap' }}>{triggerLabel[r.trigger_type] || r.trigger_type}</span>
+                <span>→ {r.summary}</span>
+              </div>
+            ))}</div> : <p className="muted" style={{ margin: 0, fontSize: 13 }}>No automation activity recorded yet.</p>}
           </div>
         </section> : null}
 
