@@ -131,11 +131,22 @@ input[type='date'] {
 }
 
 /* Per-column filter inputs (the row under the headers): keep them compact so a
-   short column like State/Postcode isn't ballooned by the input's default width. */
+   short column like State/Postcode isn't ballooned by the input's default width.
+   !important is needed because the inputs carry an inline width:100%. */
 #deliv-table thead tr:nth-child(2) input {
-  width: 104px;
-  min-width: 0;
+  width: 88px !important;
+  min-width: 0 !important;
   box-sizing: border-box;
+}
+
+/* Cap the wide free-text columns (Customer, Street, Suburb) and let long values
+   wrap to a second line instead of stretching the column. */
+#deliv-table tbody tr.data-row td:nth-child(4),
+#deliv-table tbody tr.data-row td:nth-child(12),
+#deliv-table tbody tr.data-row td:nth-child(13) {
+  max-width: 150px;
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 
 textarea {
