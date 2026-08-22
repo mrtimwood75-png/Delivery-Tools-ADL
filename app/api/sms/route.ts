@@ -68,6 +68,7 @@ export async function POST(request: NextRequest) {
     let skippedPaid = 0
     let skippedNoMobile = 0
     let skippedSent = 0
+    const failures: { order: string; reason: string }[] = []
     type LogRow = { customer_id: string | null; order_id: string; direction: string; phone: string; body: string; status: string; provider_message_id: string | null; template_id: string | null; sent_by: string | null; error: string | null; purpose: string | null }
     const logRows: LogRow[] = []
     const sentOrderIds: string[] = []
@@ -93,7 +94,9 @@ export async function POST(request: NextRequest) {
         if (gen.ok && gen.url) {
           order.stripe_link = gen.url
         } else {
-          await supabaseAdmin.from('delivery_orders').update({ sms_status: `Failed (Could not create Stripe link${gen.reason ? `: ${gen.reason}` : ''})` }).eq('id', order.id)
+          const reason = `Could not create Stripe link${gen.reason ? `: ${gen.reason}` : ''}`
+          await supabaseAdmin.from('delivery_orders').update({ sms_status: `Failed (${reason})` }).eq('id', order.id)
+          failures.push({ order: order.order_number, reason })
           failed += 1
           continue
         }
@@ -118,6 +121,7 @@ export async function POST(request: NextRequest) {
           .update({ sms_status: `Failed (${errText})` })
           .eq('id', order.id)
         logRows.push({ customer_id: order.customer_id, order_id: order.id, direction: 'outbound', phone: normalizeMobileAu(mobile), body: message, status: 'failed', provider_message_id: null, template_id: templateId, sent_by: sentBy, error: errText, purpose })
+        failures.push({ order: order.order_number, reason: errText })
         failed += 1
       }
     }
@@ -131,7 +135,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ sent, failed, skippedPaid, skippedNoMobile, skippedSent })
+    return NextResponse.json({ sent, failed, skippedPaid, skippedNoMobile, skippedSent, failures })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'SMS sending failed.' }, { status: 500 })
   }
