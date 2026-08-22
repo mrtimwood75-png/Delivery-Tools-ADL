@@ -127,8 +127,14 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // Some imported/legacy rows carry a far-future "no date" sentinel (3000-01-01);
+  // never surface it as a real date.
+  const noSentinel = (d: unknown) => (d === '3000-01-01' ? null : d)
   const orders = (orderRows || []).map((order) => ({
     ...order,
+    goods_in_date: noSentinel(order.goods_in_date),
+    goods_ready_date: noSentinel(order.goods_ready_date),
+    delivery_date: noSentinel(order.delivery_date),
     ready_status: order.ready_status || 'Not Ready',
     payment_status: Number(order.payment_due || 0) > 0 ? 'Unpaid' : 'Paid',
     customers: customersById[order.customer_id] || null,
@@ -182,7 +188,7 @@ export async function POST(request: NextRequest) {
         delivery_date: cleanText(body.delivery_date) || null,
         order_notes: cleanText(body.order_notes) || null,
         source: cleanText(body.source) || 'bca',
-        service_time: numericValue(body.service_time, 0),
+        service_time: numericValue(body.service_time, 20),
         sms_status: ''
       }, { onConflict: 'order_number' })
       .select('id, order_number')
