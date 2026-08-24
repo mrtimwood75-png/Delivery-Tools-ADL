@@ -130,6 +130,17 @@ input[type='date'] {
   box-sizing: border-box;
 }
 
+/* Group the Delivery Date (col 15) + Time Request (col 16) columns with a subtle
+   warm shade so they read as one "Delivery" block. */
+#deliv-table thead tr > *:nth-child(15),
+#deliv-table thead tr > *:nth-child(16) {
+  background-color: #efe8db !important;
+}
+#deliv-table tbody tr.data-row > *:nth-child(15),
+#deliv-table tbody tr.data-row > *:nth-child(16) {
+  background-color: rgba(150, 128, 84, 0.07);
+}
+
 /* Compact time-window inputs paired under the delivery date. */
 .time-mini {
   width: 80px;
