@@ -13,8 +13,10 @@ type Automation = { id: string; is_active: boolean; sort_order: number; trigger_
 type NewAutomation = { trigger_type: string; trigger_template_ids: string[]; trigger_keyword: string; trigger_status: string; match_mode: string; action_set_status: string; action_set_light: string; action_set_ready: string; action_regenerate_link: boolean; action_send_template_ids: string[]; payment_source: string }
 const emptyAuto: NewAutomation = { trigger_type: 'reply_to_template', trigger_template_ids: [], trigger_keyword: '', trigger_status: '', match_mode: 'keyword', action_set_status: '', action_set_light: '', action_set_ready: '', action_regenerate_link: false, action_send_template_ids: [], payment_source: 'any' }
 const paymentSourceLabel: Record<string, string> = { any: 'any payment', dashboard: 'warehouse (dashboard) links', showroom: 'showroom (payment app) links' }
-type Tile = { id: string; label: string; kind: string; value: string; tone: string; is_active: boolean }
-const emptyTile = { label: '', kind: 'customerStatus', value: '', tone: '#3a4a5a' }
+type Crit = { kind: string; value: string }
+type Tile = { id: string; label: string; kind: string; value: string; criteria: Crit[] | null; tone: string; is_active: boolean }
+type TileDraft = { label: string; tone: string; criteria: Crit[]; pendKind: string; pendValue: string }
+const emptyTile: TileDraft = { label: '', tone: '#3a4a5a', criteria: [], pendKind: 'customerStatus', pendValue: '' }
 const TILE_KINDS: { kind: string; label: string }[] = [
   { kind: 'customerStatus', label: 'Customer status is' },
   { kind: 'deliveryLight', label: 'Delivery light is' },
@@ -66,7 +68,9 @@ export default function AdminTemplatesPage() {
   const [automations, setAutomations] = useState<Automation[]>([])
   const [automationRuns, setAutomationRuns] = useState<{ id: string; order_number: string; trigger_type: string; summary: string; created_at: string }[]>([])
   const [tiles, setTiles] = useState<Tile[]>([])
-  const [newTile, setNewTile] = useState(emptyTile)
+  const [newTile, setNewTile] = useState<TileDraft>(emptyTile)
+  const [editingTileId, setEditingTileId] = useState<string | null>(null)
+  const [editTile, setEditTile] = useState<TileDraft>(emptyTile)
   const [newAuto, setNewAuto] = useState<NewAutomation>(emptyAuto)
   const [editingAutoId, setEditingAutoId] = useState<string | null>(null)
   const [editAuto, setEditAuto] = useState<NewAutomation>(emptyAuto)
@@ -201,10 +205,9 @@ export default function AdminTemplatesPage() {
   }
   async function loadTiles() { try { const r = await fetch('/api/dashboard-tiles', { cache: 'no-store' }); const j = await r.json(); if (r.ok) setTiles(j.tiles || []) } catch { /* ignore */ } }
   async function addTile() {
-    const p = { ...newTile }
-    if (!p.label.trim()) return setStatus('Enter a tile label.')
-    if (['customerStatus', 'deliveryLight', 'payment', 'ready'].includes(p.kind) && !p.value) return setStatus('Pick a value for this criteria.')
-    const r = await fetch('/api/dashboard-tiles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) })
+    if (!newTile.label.trim()) return setStatus('Enter a tile label.')
+    if (!newTile.criteria.length) return setStatus('Add at least one criteria to the tile.')
+    const r = await fetch('/api/dashboard-tiles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label: newTile.label, tone: newTile.tone, criteria: newTile.criteria }) })
     const j = await r.json(); if (!r.ok) return setStatus(j.error || 'Could not add tile')
     setNewTile(emptyTile); await loadTiles(); setStatus('Tile added.')
   }
@@ -214,6 +217,13 @@ export default function AdminTemplatesPage() {
   }
   async function moveTile(id: string, move: 'up' | 'down') { await fetch('/api/dashboard-tiles', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, move }) }); await loadTiles() }
   async function deleteTile(id: string) { const r = await fetch('/api/dashboard-tiles', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }); if (!r.ok) { const j = await r.json(); return setStatus(j.error || 'Could not delete tile') } await loadTiles(); setStatus('Tile deleted.') }
+  function startEditTile(t: Tile) { setEditingTileId(t.id); setEditTile({ label: t.label, tone: t.tone, criteria: (t.criteria && t.criteria.length) ? t.criteria : [{ kind: t.kind, value: t.value }], pendKind: 'customerStatus', pendValue: '' }) }
+  async function saveEditTile(id: string) {
+    if (!editTile.label.trim()) return setStatus('Enter a tile label.')
+    if (!editTile.criteria.length) return setStatus('A tile needs at least one criteria.')
+    await updateTile(id, { label: editTile.label, tone: editTile.tone, criteria: editTile.criteria })
+    setEditingTileId(null); setStatus('Tile updated.')
+  }
   function tileValueControl(kind: string, value: string, onChange: (v: string) => void) {
     if (kind === 'customerStatus') return <select value={value} onChange={(e) => onChange(e.target.value)}><option value="">— status —</option>{statusOpts.map((s) => <option key={s} value={s}>{s}</option>)}</select>
     if (kind === 'deliveryLight') return <select value={value} onChange={(e) => onChange(e.target.value)}><option value="">— light —</option>{TILE_LIGHT_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
@@ -221,7 +231,20 @@ export default function AdminTemplatesPage() {
     if (kind === 'ready') return <select value={value} onChange={(e) => onChange(e.target.value)}><option value="">— prep —</option><option value="Not Prepped">Not Prepped</option><option value="Ready">Ready</option></select>
     return <span className="muted" style={{ fontSize: 12 }}>(no value needed)</span>
   }
-  function tileSummary(t: Tile) { const k = TILE_KINDS.find((x) => x.kind === t.kind)?.label || t.kind; return (t.value && t.value !== 'yes') ? `${k}: ${t.value}` : k }
+  function critLabel(c: Crit) { const k = TILE_KINDS.find((x) => x.kind === c.kind)?.label || c.kind; return (c.value && c.value !== 'yes') ? `${k}: ${c.value}` : k }
+  function tileCrits(t: Tile): Crit[] { return (t.criteria && t.criteria.length) ? t.criteria : [{ kind: t.kind, value: t.value }] }
+  function tileSummary(t: Tile) { return tileCrits(t).map(critLabel).join('  AND  ') }
+  function criteriaBuilder(draft: TileDraft, set: (d: TileDraft) => void) {
+    const needsVal = ['customerStatus', 'deliveryLight', 'payment', 'ready'].includes(draft.pendKind)
+    return <div style={{ display: 'grid', gap: 6 }}>
+      {draft.criteria.length ? <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{draft.criteria.map((c, idx) => <span key={idx} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--accent-soft)', borderRadius: 999, padding: '3px 6px 3px 11px', fontSize: 12.5, fontWeight: 600 }}>{critLabel(c)}<button type="button" aria-label="Remove criteria" onClick={() => set({ ...draft, criteria: draft.criteria.filter((_, i) => i !== idx) })} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 15, lineHeight: 1, padding: 0, color: 'inherit' }}>×</button></span>)}<span className="muted" style={{ fontSize: 12, alignSelf: 'center' }}>{draft.criteria.length > 1 ? '(all must match)' : ''}</span></div> : null}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <label style={{ minWidth: 180 }}>Add criteria<select value={draft.pendKind} onChange={(e) => set({ ...draft, pendKind: e.target.value, pendValue: '' })}>{TILE_KINDS.map((k) => <option key={k.kind} value={k.kind}>{k.label}</option>)}</select></label>
+        <label style={{ minWidth: 150 }}>Value{tileValueControl(draft.pendKind, draft.pendValue, (v) => set({ ...draft, pendValue: v }))}</label>
+        <button type="button" className="btn-secondary" onClick={() => { if (needsVal && !draft.pendValue) return setStatus('Pick a value for this criteria.'); const value = (draft.pendKind === 'unreadOnly' || draft.pendKind === 'paidUnbooked') ? 'yes' : draft.pendValue; set({ ...draft, criteria: [...draft.criteria, { kind: draft.pendKind, value }], pendValue: '' }) }}>+ Add</button>
+      </div>
+    </div>
+  }
 
   async function addAutomation() {
     const payload = { ...newAuto }
@@ -641,28 +664,42 @@ export default function AdminTemplatesPage() {
 
         {isAdmin && tab === 'delivery' ? <section className="card grid" style={{ boxShadow: 'none' }}>
           <h2 style={{ margin: 0 }}>Dashboard Alert Tiles</h2>
-          <p className="muted" style={{ margin: 0 }}>The clickable count tiles across the top of the dashboard. Set each tile&apos;s label, the criteria it counts, and its colour; reorder with the arrows. Clicking a tile on the dashboard filters to those orders.</p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end', padding: 12, border: '1px solid var(--border)', borderRadius: 10 }}>
-            <label style={{ minWidth: 190 }}>Label<input value={newTile.label} onChange={(e) => setNewTile({ ...newTile, label: e.target.value })} placeholder="e.g. In Storage" /></label>
-            <label style={{ minWidth: 190 }}>Criteria<select value={newTile.kind} onChange={(e) => setNewTile({ ...newTile, kind: e.target.value, value: '' })}>{TILE_KINDS.map((k) => <option key={k.kind} value={k.kind}>{k.label}</option>)}</select></label>
-            <label style={{ minWidth: 160 }}>Value{tileValueControl(newTile.kind, newTile.value, (v) => setNewTile({ ...newTile, value: v }))}</label>
-            <label style={{ minWidth: 80 }}>Colour<input type="color" value={newTile.tone} onChange={(e) => setNewTile({ ...newTile, tone: e.target.value })} style={{ width: 48, height: 34, padding: 2 }} /></label>
-            <button type="button" onClick={addTile}>Add tile</button>
+          <p className="muted" style={{ margin: 0 }}>The clickable count tiles across the top of the dashboard. Give a tile a label, a colour, and one or more criteria (<strong>all must match</strong> — e.g. status In Storage AND payment Unpaid). Reorder with the arrows; clicking a tile filters the dashboard to those orders.</p>
+          <div style={{ display: 'grid', gap: 10, padding: 12, border: '1px solid var(--border)', borderRadius: 10 }}>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+              <label style={{ minWidth: 240 }}>New tile label<input value={newTile.label} onChange={(e) => setNewTile({ ...newTile, label: e.target.value })} placeholder="e.g. In Storage — Unpaid" /></label>
+              <label style={{ minWidth: 80 }}>Colour<input type="color" value={newTile.tone} onChange={(e) => setNewTile({ ...newTile, tone: e.target.value })} style={{ width: 48, height: 34, padding: 2 }} /></label>
+            </div>
+            {criteriaBuilder(newTile, setNewTile)}
+            <div><button type="button" onClick={addTile}>Add tile</button></div>
           </div>
           <div style={{ display: 'grid', gap: 8 }}>
             {tiles.length ? tiles.map((t, i) => (
-              <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 10, opacity: t.is_active ? 1 : 0.55, flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <button type="button" className="btn-secondary" style={{ padding: '0 8px', lineHeight: 1.4 }} disabled={i === 0} onClick={() => moveTile(t.id, 'up')} aria-label="Move up">▲</button>
-                  <button type="button" className="btn-secondary" style={{ padding: '0 8px', lineHeight: 1.4 }} disabled={i === tiles.length - 1} onClick={() => moveTile(t.id, 'down')} aria-label="Move down">▼</button>
+              editingTileId === t.id ? (
+                <div key={t.id} style={{ border: '2px solid var(--accent, #1a1a1a)', borderRadius: 10, padding: 12, display: 'grid', gap: 10 }}>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                    <label style={{ minWidth: 240 }}>Label<input value={editTile.label} onChange={(e) => setEditTile({ ...editTile, label: e.target.value })} /></label>
+                    <label style={{ minWidth: 80 }}>Colour<input type="color" value={editTile.tone} onChange={(e) => setEditTile({ ...editTile, tone: e.target.value })} style={{ width: 48, height: 34, padding: 2 }} /></label>
+                  </div>
+                  {criteriaBuilder(editTile, setEditTile)}
+                  <div style={{ display: 'flex', gap: 8 }}><button type="button" onClick={() => saveEditTile(t.id)}>Save</button><button type="button" className="btn-secondary" onClick={() => setEditingTileId(null)}>Cancel</button></div>
                 </div>
-                <span style={{ width: 16, height: 16, borderRadius: 4, background: t.tone, border: '1px solid rgba(0,0,0,0.15)' }} />
-                <input value={t.label} onChange={(e) => setTiles((cur) => cur.map((x) => x.id === t.id ? { ...x, label: e.target.value } : x))} onBlur={(e) => updateTile(t.id, { label: e.target.value })} style={{ minWidth: 190, flex: 1 }} />
-                <span className="muted" style={{ fontSize: 12.5, minWidth: 180 }}>{tileSummary(t)}</span>
-                <input type="color" value={t.tone} onChange={(e) => updateTile(t.id, { tone: e.target.value })} style={{ width: 40, height: 30, padding: 2 }} title="Tile colour" />
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5 }}><input type="checkbox" checked={t.is_active} onChange={(e) => updateTile(t.id, { is_active: e.target.checked })} style={{ width: 'auto' }} />Active</label>
-                <button type="button" className="btn-danger" onClick={() => deleteTile(t.id)}>Delete</button>
-              </div>
+              ) : (
+                <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 10, opacity: t.is_active ? 1 : 0.55, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <button type="button" className="btn-secondary" style={{ padding: '0 8px', lineHeight: 1.4 }} disabled={i === 0} onClick={() => moveTile(t.id, 'up')} aria-label="Move up">▲</button>
+                    <button type="button" className="btn-secondary" style={{ padding: '0 8px', lineHeight: 1.4 }} disabled={i === tiles.length - 1} onClick={() => moveTile(t.id, 'down')} aria-label="Move down">▼</button>
+                  </div>
+                  <span style={{ width: 16, height: 16, borderRadius: 4, background: t.tone, border: '1px solid rgba(0,0,0,0.15)' }} />
+                  <div style={{ flex: 1, minWidth: 220 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13.5 }}>{t.label}</div>
+                    <div className="muted" style={{ fontSize: 12.5 }}>{tileSummary(t)}</div>
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5 }}><input type="checkbox" checked={t.is_active} onChange={(e) => updateTile(t.id, { is_active: e.target.checked })} style={{ width: 'auto' }} />Active</label>
+                  <button type="button" className="btn-secondary" onClick={() => startEditTile(t)}>Edit</button>
+                  <button type="button" className="btn-danger" onClick={() => deleteTile(t.id)}>Delete</button>
+                </div>
+              )
             )) : <p className="muted" style={{ margin: 0 }}>No tiles yet — add one above.</p>}
           </div>
         </section> : null}
