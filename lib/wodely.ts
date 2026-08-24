@@ -46,6 +46,8 @@ type OrderRow = {
   salesperson: string | null
   order_notes: string | null
   delivery_date: string | null
+  delivery_time_from: string | null
+  delivery_time_to: string | null
   source: string | null
   customers: { name: string | null; phone: string | null; address: string | null; street_address: string | null; suburb: string | null; state: string | null; postcode: string | null } | Array<Record<string, string | null>> | null
   delivery_order_items: Array<{ product_code: string | null; product_name: string | null; quantity: number | null }> | null
@@ -90,10 +92,14 @@ function buildPayload(order: OrderRow): BuiltPayload {
     .map((it) => prune({ productId: clean(it.product_code), productDesc: clean(it.product_name), orderId, quantity: Number(it.quantity || 0), price: 0 }) as unknown as WodelyPackage)
     .filter((p) => clean(p.productId) || clean(p.productDesc))
 
-  // Default delivery window 08:00–17:00 on the booked day, in the local timezone.
+  // Delivery window on the booked day, in the local timezone. Use the order's
+  // requested times if set, otherwise default 08:00 (after) and 19:00 (before).
+  const hhmm = (t: string | null, fallback: string) => { const m = clean(t).match(/^(\d{1,2}):(\d{2})/); return m ? `${m[1].padStart(2, '0')}:${m[2]}` : fallback }
+  const fromTime = hhmm(order.delivery_time_from, '08:00')
+  const toTime = hhmm(order.delivery_time_to, '19:00')
   const tz = deliveryDate ? adelaideOffset(deliveryDate) : ''
-  const after = deliveryDate ? `${deliveryDate}T08:00:00${tz}` : null
-  const before = deliveryDate ? `${deliveryDate}T17:00:00${tz}` : null
+  const after = deliveryDate ? `${deliveryDate}T${fromTime}:00${tz}` : null
+  const before = deliveryDate ? `${deliveryDate}T${toTime}:00${tz}` : null
   const taskDesc = [cfg.displayName, orderId, recipientName].filter(Boolean).join(' - ')
 
   const payload = prune({
@@ -218,7 +224,7 @@ export async function pushOrdersToWodely(ids: string[]): Promise<WodelyPushResul
 
   const { data, error } = await supabaseAdmin
     .from('delivery_orders')
-    .select('id, order_number, payment_due, service_time, salesperson, order_notes, delivery_date, source, customers(name, phone, address, street_address, suburb, state, postcode), delivery_order_items(product_code, product_name, quantity)')
+    .select('id, order_number, payment_due, service_time, salesperson, order_notes, delivery_date, delivery_time_from, delivery_time_to, source, customers(name, phone, address, street_address, suburb, state, postcode), delivery_order_items(product_code, product_name, quantity)')
     .in('id', ids)
   if (error) throw new Error(error.message)
 

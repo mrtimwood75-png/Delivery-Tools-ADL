@@ -28,6 +28,8 @@ export type Order = {
   goods_ready_date: string | null
   goods_in_date: string | null
   delivery_date: string | null
+  delivery_time_from?: string | null
+  delivery_time_to?: string | null
   stripe_link: string | null
   stripe_link_expires_at?: string | null
   payment_due: number
