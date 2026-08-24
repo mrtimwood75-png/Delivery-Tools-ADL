@@ -141,6 +141,18 @@ input[type='date'] {
   background-color: rgba(150, 128, 84, 0.07);
 }
 
+/* Warehouse-note chip: amber "light on" when the order has a note. */
+.stat-chip.note-on {
+  color: #9a6a14;
+  background: #fbf1dc;
+  border-color: #ecd8a8;
+}
+
+/* Row hover highlight for easier scanning across the wide table. */
+#deliv-table tbody tr.data-row:hover td {
+  background-color: #eef4fb;
+}
+
 /* Compact time-window inputs paired under the delivery date. */
 .time-mini {
   width: 80px;
