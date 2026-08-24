@@ -143,9 +143,10 @@ input[type='date'] {
 
 /* Warehouse-note chip: amber "light on" when the order has a note. */
 .stat-chip.note-on {
-  color: #9a6a14;
-  background: #fbf1dc;
-  border-color: #ecd8a8;
+  color: #fff;
+  background: #e6a417;
+  border-color: #c8860a;
+  box-shadow: 0 0 0 2px rgba(230,164,23,0.28);
 }
 
 /* Row hover highlight for easier scanning across the wide table. */

@@ -19,6 +19,7 @@ type TileDraft = { label: string; tone: string; criteria: Crit[]; pendKind: stri
 const emptyTile: TileDraft = { label: '', tone: '#3a4a5a', criteria: [], pendKind: 'customerStatus', pendValue: '' }
 const TILE_KINDS: { kind: string; label: string }[] = [
   { kind: 'customerStatus', label: 'Customer status is' },
+  { kind: 'customerStatusNot', label: 'Customer status is NOT' },
   { kind: 'deliveryLight', label: 'Delivery light is' },
   { kind: 'payment', label: 'Payment is' },
   { kind: 'ready', label: 'Prep is' },
@@ -225,7 +226,7 @@ export default function AdminTemplatesPage() {
     setEditingTileId(null); setStatus('Tile updated.')
   }
   function tileValueControl(kind: string, value: string, onChange: (v: string) => void) {
-    if (kind === 'customerStatus') return <select value={value} onChange={(e) => onChange(e.target.value)}><option value="">— status —</option>{statusOpts.map((s) => <option key={s} value={s}>{s}</option>)}</select>
+    if (kind === 'customerStatus' || kind === 'customerStatusNot') return <select value={value} onChange={(e) => onChange(e.target.value)}><option value="">— status —</option>{statusOpts.map((s) => <option key={s} value={s}>{s}</option>)}</select>
     if (kind === 'deliveryLight') return <select value={value} onChange={(e) => onChange(e.target.value)}><option value="">— light —</option>{TILE_LIGHT_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
     if (kind === 'payment') return <select value={value} onChange={(e) => onChange(e.target.value)}><option value="">— payment —</option><option value="Unpaid">Unpaid</option><option value="Paid">Paid</option></select>
     if (kind === 'ready') return <select value={value} onChange={(e) => onChange(e.target.value)}><option value="">— prep —</option><option value="Not Prepped">Not Prepped</option><option value="Ready">Ready</option></select>
@@ -235,7 +236,7 @@ export default function AdminTemplatesPage() {
   function tileCrits(t: Tile): Crit[] { return (t.criteria && t.criteria.length) ? t.criteria : [{ kind: t.kind, value: t.value }] }
   function tileSummary(t: Tile) { return tileCrits(t).map(critLabel).join('  AND  ') }
   function criteriaBuilder(draft: TileDraft, set: (d: TileDraft) => void) {
-    const needsVal = ['customerStatus', 'deliveryLight', 'payment', 'ready'].includes(draft.pendKind)
+    const needsVal = ['customerStatus', 'customerStatusNot', 'deliveryLight', 'payment', 'ready'].includes(draft.pendKind)
     return <div style={{ display: 'grid', gap: 6 }}>
       {draft.criteria.length ? <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{draft.criteria.map((c, idx) => <span key={idx} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--accent-soft)', borderRadius: 999, padding: '3px 6px 3px 11px', fontSize: 12.5, fontWeight: 600 }}>{critLabel(c)}<button type="button" aria-label="Remove criteria" onClick={() => set({ ...draft, criteria: draft.criteria.filter((_, i) => i !== idx) })} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 15, lineHeight: 1, padding: 0, color: 'inherit' }}>×</button></span>)}<span className="muted" style={{ fontSize: 12, alignSelf: 'center' }}>{draft.criteria.length > 1 ? '(all must match)' : ''}</span></div> : null}
       <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>

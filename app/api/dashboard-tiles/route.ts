@@ -5,8 +5,8 @@ export const dynamic = 'force-dynamic'
 
 const SELECT = 'id, label, kind, value, criteria, tone, sort_order, is_active'
 // The criteria a tile can count/filter on. Each maps to a dashboard filter key.
-const KINDS = new Set(['customerStatus', 'deliveryLight', 'payment', 'ready', 'unreadOnly', 'paidUnbooked'])
-const VALUE_KINDS = new Set(['customerStatus', 'deliveryLight', 'payment', 'ready'])
+const KINDS = new Set(['customerStatus', 'customerStatusNot', 'deliveryLight', 'payment', 'ready', 'unreadOnly', 'paidUnbooked'])
+const VALUE_KINDS = new Set(['customerStatus', 'customerStatusNot', 'deliveryLight', 'payment', 'ready'])
 const noStore = { 'Cache-Control': 'no-store' }
 
 function clean(v: unknown) { return String(v ?? '').trim() }
