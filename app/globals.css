@@ -132,11 +132,15 @@ input[type='date'] {
 
 /* Compact time-window inputs paired under the delivery date. */
 .time-mini {
-  width: 84px;
+  width: 80px;
   min-width: 0;
-  padding: 5px 6px;
+  padding: 4px 4px;
   font-size: 12px;
   box-sizing: border-box;
+}
+.time-mini::-webkit-calendar-picker-indicator {
+  padding: 0;
+  margin-left: 1px;
 }
 
 /* Per-column filter inputs (the row under the headers): keep them compact so a
