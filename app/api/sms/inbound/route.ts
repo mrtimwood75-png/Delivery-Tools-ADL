@@ -245,7 +245,7 @@ async function handleReply(reply: AnyRecord, origin: string) {
     }
   }
 
-  const { data: inserted } = await supabaseAdmin.from('sms_messages').insert({
+  const { data: inserted, error: insertError } = await supabaseAdmin.from('sms_messages').insert({
     customer_id,
     order_id: targetOrderId,
     direction: 'inbound',
@@ -256,6 +256,15 @@ async function handleReply(reply: AnyRecord, origin: string) {
     media_urls: media.length ? media : null,
     created_at: date
   }).select('id').maybeSingle()
+
+  // If the insert failed, DO NOT swallow it: throw so the webhook returns a 5xx
+  // and MessageMedia retries. Otherwise the reply is lost silently (it returned
+  // 200, so the provider never resends) with the customer's email copy the only
+  // trace — which is exactly the failure we're guarding against here.
+  if (insertError) {
+    console.error('[sms-inbound] insert FAILED', insertError.message, { source, normalizedPhone })
+    throw new Error(`inbound insert failed: ${insertError.message}`)
+  }
 
   // Let the staff member who owns this thread know a reply landed, and record
   // the outcome on the row (diagnostic — this app's server logs aren't visible).
@@ -276,15 +285,44 @@ async function handleDeliveryReport(report: AnyRecord) {
   return true
 }
 
+// Best-effort record of every inbound POST — raw payload, whether it passed the
+// secret check, and how it was handled — so a dropped reply can be diagnosed
+// from the database (this app's server logs aren't visible). Never throws: a
+// logging failure must not stop a real reply from being stored.
+async function logWebhookHit(raw: string, authorized: boolean, outcome: string | null): Promise<string | null> {
+  try {
+    const { data } = await supabaseAdmin
+      .from('sms_webhook_log')
+      .insert({ authorized, outcome, raw: raw.slice(0, 8000) })
+      .select('id')
+      .maybeSingle()
+    return (data?.id as string) || null
+  } catch {
+    return null
+  }
+}
+async function updateWebhookLog(id: string | null, outcome: string) {
+  if (!id) return
+  try { await supabaseAdmin.from('sms_webhook_log').update({ outcome }).eq('id', id) } catch { /* ignore */ }
+}
+
 export async function POST(request: NextRequest) {
-  if (!authorised(request)) return NextResponse.json({ error: 'Unauthorised.' }, { status: 401 })
+  const authOK = authorised(request)
+
+  // Read the raw text first so we can log even malformed or unauthorised calls.
+  let rawText = ''
+  try { rawText = await request.text() } catch { /* body already consumed / empty */ }
 
   let body: unknown
   try {
-    body = await request.json()
+    body = rawText ? JSON.parse(rawText) : {}
   } catch {
+    await logWebhookHit(rawText, authOK, 'invalid-json')
     return NextResponse.json({ error: 'Invalid JSON.' }, { status: 400 })
   }
+
+  const logId = await logWebhookHit(rawText, authOK, null)
+  if (!authOK) { await updateWebhookLog(logId, 'unauthorised'); return NextResponse.json({ error: 'Unauthorised.' }, { status: 401 }) }
 
   console.log('[sms-inbound] payload', JSON.stringify(body).slice(0, 800))
 
@@ -318,9 +356,12 @@ export async function POST(request: NextRequest) {
       }
     }
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Webhook processing failed.' }, { status: 500 })
+    const msg = error instanceof Error ? error.message : 'Webhook processing failed.'
+    await updateWebhookLog(logId, `ERROR: ${msg}`.slice(0, 250))
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 
+  await updateWebhookLog(logId, `ok received=${received} receipts=${receipts}`)
   return NextResponse.json({ ok: true, received, receipts })
 }
 
